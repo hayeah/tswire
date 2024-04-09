@@ -194,7 +194,10 @@ function relativeImportPath(
   return importPath;
 }
 
-// Extends the visit function to handle the building of the dependency graph based on the `wire` function call arguments.
+var providerDeclarations: ts.FunctionDeclaration[] = [];
+
+// processWireCallArguments collects the available providers on the `wire`
+// function call arguments.
 function processWireCallArguments(node: ts.CallExpression): void {
   // Assuming the wire function call is always the first statement of the function
   // and its arguments are directly referencing provider functions.
@@ -238,24 +241,11 @@ function processWireCallArguments(node: ts.CallExpression): void {
           (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
         );
 
-        console.log("exported:", isExported);
-        console.log("element", declaration.getFullText());
+        if (!isExported) {
+          throw new Error("provider function must be exported");
+        }
 
-        const outputModuleFile = "di_gen.ts";
-        const outputModuleFile2 = "out/di_gen.ts";
-
-        const declarationFileName = declaration.getSourceFile().fileName;
-
-        // Calculate the relative path from the declaration file to the outputModuleFile
-
-        console.log(
-          `Import path for ${outputModuleFile}:`,
-          relativeImportPath(outputModuleFile, declarationFileName)
-        );
-        console.log(
-          `Import path for ${outputModuleFile2}:`,
-          relativeImportPath(outputModuleFile2, declarationFileName)
-        );
+        providerDeclarations.push(declaration);
       }
     }
   }
@@ -266,6 +256,24 @@ for (const sourceFile of program.getSourceFiles()) {
   if (sourceFile.fileName !== "di.ts") {
     continue;
   }
+
+  // TODO: example code for generating import paths:
+
+  // const outputModuleFile = "di_gen.ts";
+  // const outputModuleFile2 = "out/di_gen.ts";
+
+  // const declarationFileName = declaration.getSourceFile().fileName;
+
+  // // Calculate the relative path from the declaration file to the outputModuleFile
+
+  // console.log(
+  //   `Import path for ${outputModuleFile}:`,
+  //   relativeImportPath(outputModuleFile, declarationFileName)
+  // );
+  // console.log(
+  //   `Import path for ${outputModuleFile2}:`,
+  //   relativeImportPath(outputModuleFile2, declarationFileName)
+  // );
 
   ts.forEachChild(sourceFile, visit);
 
