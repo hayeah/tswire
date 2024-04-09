@@ -12,31 +12,6 @@ function kindOf(node: ts.Node): string {
   return ts.SyntaxKind[node.kind];
 }
 
-// isProviderFunction checks that a function declaration has a return type that is not "undefined".
-function isProviderFunction(node: ts.Node): node is ts.FunctionDeclaration {
-  if (!ts.isFunctionDeclaration(node)) {
-    return false;
-  }
-
-  const sig = checker.getSignatureFromDeclaration(node);
-
-  const signature = checker.getSignatureFromDeclaration(node);
-  if (!signature) {
-    return false;
-  }
-
-  const returnType = signature.getReturnType();
-  const returnTypeString = checker.typeToString(returnType);
-
-  if (returnTypeString === "void") {
-    return false;
-  }
-
-  // returnType.symbol.declarations!.forEach((declaration) => {});
-
-  return true;
-}
-
 // isInjectionFunctionDeclaration checks that a function declaration has `wire` call.
 function isInjectionFunctionDeclaration(
   node: ts.Node
@@ -127,14 +102,11 @@ function extractProviderInfo(node: ts.FunctionDeclaration): void {
   }
 }
 
+const injectionFunctionDeclarations: ts.FunctionDeclaration[] = [];
+
 function visit(node: ts.Node) {
   if (isInjectionFunctionDeclaration(node)) {
-    console.log("injection fn");
-    console.log(node.getFullText());
-  } else if (isProviderFunction(node)) {
-    console.log("provider fn");
-    console.log(node.getFullText());
-    extractProviderInfo(node);
+    injectionFunctionDeclarations.push(node);
   }
 }
 
@@ -277,14 +249,21 @@ for (const sourceFile of program.getSourceFiles()) {
 
   ts.forEachChild(sourceFile, visit);
 
-  const deps = topologicalSort("Baz", dependencyGraph);
-  console.log(deps);
+  for (let provider of providerDeclarations) {
+    extractProviderInfo(provider);
+  }
 
-  console.log(providerMap.keys());
+  // use the first injection function as init
+  const initDeclaration = injectionFunctionDeclarations[0];
+
+  const deps = topologicalSort("Baz", dependencyGraph);
 
   const initFn = generateInitFunction(
     deps.map((dep) => providerMap.get(dep)!),
     "Baz"
   );
+
+  // complete code here ...
+
   console.log(initFn);
 }
