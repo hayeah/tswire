@@ -13,15 +13,15 @@ interface Baz {
   bar: Bar;
 }
 
-function provideFoo(): Foo {
+export function provideFoo(): Foo {
   return { foo: "foo" };
 }
 
-function provideBar(foo: Foo): Bar {
+export function provideBar(foo: Foo): Bar {
   return { bar: "bar", foo };
 }
 
-function provideBaz(foo: Foo, bar: Bar): Baz {
+export function provideBaz(foo: Foo, bar: Bar): Baz {
   return { foo, bar };
 }
 

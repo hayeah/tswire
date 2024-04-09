@@ -1,39 +1,15 @@
-import * as ts from "typescript";
-import { readFileSync } from "fs";
-import { topologicalSort } from "./topsort";
+import * as ts from "typescript"
+import { topologicalSort } from "./topsort"
+
+import path from "path"
 
 // Load your TypeScript file
-const fileNames = ["di.ts"];
-const program = ts.createProgram(fileNames, { allowJs: true });
-const checker = program.getTypeChecker();
+const fileNames = ["di.ts"]
+const program = ts.createProgram(fileNames, { allowJs: true })
+const checker = program.getTypeChecker()
 
 function kindOf(node: ts.Node): string {
-  return ts.SyntaxKind[node.kind];
-}
-
-// isProviderFunction checks that a function declaration has a return type that is not "undefined".
-function isProviderFunction(node: ts.Node): node is ts.FunctionDeclaration {
-  if (!ts.isFunctionDeclaration(node)) {
-    return false;
-  }
-
-  const sig = checker.getSignatureFromDeclaration(node);
-
-  const signature = checker.getSignatureFromDeclaration(node);
-  if (!signature) {
-    return false;
-  }
-
-  const returnType = signature.getReturnType();
-  const returnTypeString = checker.typeToString(returnType);
-
-  if (returnTypeString === "void") {
-    return false;
-  }
-
-  // returnType.symbol.declarations!.forEach((declaration) => {});
-
-  return true;
+  return ts.SyntaxKind[node.kind]
 }
 
 // isInjectionFunctionDeclaration checks that a function declaration has `wire` call.
@@ -41,36 +17,31 @@ function isInjectionFunctionDeclaration(
   node: ts.Node
 ): node is ts.FunctionDeclaration {
   if (!ts.isFunctionDeclaration(node)) {
-    return false;
+    return false
   }
 
   if (!node.body || node.body.statements.length === 0) {
-    return false;
+    return false
   }
 
   if (!node.name) {
-    return false;
+    return false
   }
 
-  const functionName = node.name.text;
+  const functionName = node.name.text
 
-  const firstStatement = node.body.statements[0];
+  const firstStatement = node.body.statements[0]
 
   if (
     ts.isExpressionStatement(firstStatement) &&
     ts.isCallExpression(firstStatement.expression) &&
     firstStatement.expression.expression.getText() === "wire"
   ) {
-    return true;
+    processWireCallArguments(firstStatement.expression)
+    return true
   } else {
-    return false;
+    return false
   }
-}
-
-interface ProviderInfo {
-  functionName: string;
-  returnType: ts.Type;
-  paramTypes: ts.Type[];
 }
 
 // `providerMap` is a mapping from provider function names to their respective information.
@@ -81,7 +52,7 @@ interface ProviderInfo {
 //   - `paramTypes`: An array of TypeScript type objects representing the types of parameters the provider function expects.
 // This map is used to quickly access the metadata about each provider function by its name,
 // including what it returns and what inputs it requires.
-const providerMap: Map<string, ProviderInfo> = new Map();
+const providerMap: Map<ts.Type, ts.FunctionDeclaration> = new Map()
 
 // `dependencyGraph` is a mapping that represents the dependencies between types in the DI system.
 // The key is a string representing the name of a type (the return type of a provider).
@@ -90,92 +61,282 @@ const providerMap: Map<string, ProviderInfo> = new Map();
 // the graph will have an entry with `A` as the key, and a set containing `B` and `C`.
 // This graph is used to determine the order in which provider functions should be called to satisfy dependencies,
 // ensuring that all inputs for a given provider are available before it is invoked.
-const dependencyGraph: Map<string, Set<string>> = new Map();
+const dependencyGraph: Map<ts.Type, Set<ts.Type>> = new Map()
 
 // Extract provider information
-function extractProviderInfo(node: ts.FunctionDeclaration): void {
-  if (!node.name) return;
-  const functionName = node.name.text;
+function extractProviderInfo(fndef: ts.FunctionDeclaration): void {
+  if (!fndef.name) return
 
-  const signature = checker.getSignatureFromDeclaration(node);
-  if (!signature) return;
+  const signature = checker.getSignatureFromDeclaration(fndef)
+  if (!signature) return
 
-  const returnType = checker.typeToString(signature.getReturnType());
+  const returnType = signature.getReturnType()
+
   const paramTypes = signature.getParameters().map((param) => {
-    const type = checker.getTypeAtLocation(param.valueDeclaration!);
-    return checker.typeToString(type);
-  });
+    const type = checker.getTypeAtLocation(param.valueDeclaration!)
+    return type
+  })
 
-  providerMap.set(returnType, {
-    functionName,
-    returnType: signature.getReturnType(),
-    paramTypes: signature
-      .getParameters()
-      .map((param) => checker.getTypeAtLocation(param.valueDeclaration!)),
-  });
+  providerMap.set(returnType, fndef)
 
-  let dependencies = dependencyGraph.get(returnType);
+  // {
+  //   functionName,
+  //   returnType: signature.getReturnType(),
+  //   paramTypes: signature
+  //     .getParameters()
+  //     .map((param) => checker.getTypeAtLocation(param.valueDeclaration!)),
+  // }
+
+  let dependencies = dependencyGraph.get(returnType)
   if (!dependencies) {
-    dependencies = new Set();
-    dependencyGraph.set(returnType, dependencies);
+    dependencies = new Set()
+    dependencyGraph.set(returnType, dependencies)
   }
 
   for (const paramType of paramTypes) {
-    dependencies.add(paramType);
+    dependencies.add(paramType)
   }
 }
+
+const injectionFunctionDeclarations: ts.FunctionDeclaration[] = []
 
 function visit(node: ts.Node) {
   if (isInjectionFunctionDeclaration(node)) {
-    console.log("injection fn");
-    console.log(node.getFullText());
-  } else if (isProviderFunction(node)) {
-    console.log("provider fn");
-    console.log(node.getFullText());
-    extractProviderInfo(node);
+    injectionFunctionDeclarations.push(node)
   }
 }
 
-function generateInitFunction(
-  providers: ProviderInfo[],
-  targetType: string
+function isArrayLiteral(node: ts.Node): node is ts.ArrayLiteralExpression {
+  return node.kind === ts.SyntaxKind.ArrayLiteralExpression
+}
+
+function isVariableDeclaration(node: ts.Node): node is ts.VariableDeclaration {
+  return node.kind === ts.SyntaxKind.VariableDeclaration
+}
+
+function isFunctionDeclaration(node: ts.Node): node is ts.FunctionDeclaration {
+  return node.kind === ts.SyntaxKind.FunctionDeclaration
+}
+
+function relativeImportPath(
+  outputModuleFile: string,
+  declarationFileName: string
 ): string {
-  let functionBody = "";
-  const variablesMap = new Map<string, string>(); // Maps return types to variable names
+  // const declarationFileName = declaration.getSourceFile().fileName;
+  // Calculate the relative path from the declaration file to the outputModuleFile
+  let importPath = path
+    .relative(path.dirname(outputModuleFile), declarationFileName)
+    // Remove the file extension
+    .replace(/\.\w+$/, "")
+    // Ensure import path format (replace \ with / for non-UNIX systems)
+    .replace(/\\/g, "/")
+  // If the path does not start with '.', add './' to make it a relative path
+  if (!importPath.startsWith(".")) {
+    importPath = "./" + importPath
+  }
 
-  // Iterate over providers to generate the function body
+  return importPath
+}
+
+var providerDeclarations: ts.FunctionDeclaration[] = []
+
+// processWireCallArguments collects the available providers on the `wire`
+// function call arguments.
+function processWireCallArguments(node: ts.CallExpression): void {
+  // Assuming the wire function call is always the first statement of the function
+  // and its arguments are directly referencing provider functions.
+  //
+  // It should have the form:
+  //
+  // wire(providers);
+
+  if (node.arguments.length != 1) {
+    throw new Error("wire function should have exactly one argument")
+  }
+
+  const arg = node.arguments[0]
+
+  if (!ts.isIdentifier(arg)) {
+    throw new Error("wire function argument should be a variable name")
+  }
+
+  let s = checker.getSymbolAtLocation(arg)
+  let d = s?.valueDeclaration
+  if (!s || !d) {
+    throw new Error("unknown symbol found for wire function argument")
+  }
+
+  // Check that wire argument is of the form:
+  // const providers = [ provideFoo, provideBar, provideBaz ];
+  if (
+    isVariableDeclaration(d) &&
+    d.initializer &&
+    isArrayLiteral(d.initializer)
+  ) {
+    for (let e of d.initializer.elements) {
+      if (!ts.isIdentifier(e)) {
+        throw new Error("provider should be a function declaration")
+      }
+
+      const declaration = checker.getSymbolAtLocation(e)?.valueDeclaration
+
+      if (declaration && isFunctionDeclaration(declaration)) {
+        const isExported = declaration.modifiers?.some(
+          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
+        )
+
+        if (!isExported) {
+          throw new Error("provider function must be exported")
+        }
+
+        providerDeclarations.push(declaration)
+      }
+    }
+  }
+}
+
+// `generateInitFunction` constructs the TypeScript code for an initialization function
+// that uses the sorted providers to satisfy dependencies for a target type.
+// The function constructs the required import statements dynamically to avoid naming conflicts
+// and ensure that only necessary provider functions are imported and used.
+// `providers`: An array of FunctionDeclaration objects representing the sorted providers.
+// `targetType`: The Type object representing the type we aim to construct.
+// Returns a string containing the TypeScript code for the initialization function and necessary imports.
+function generateInitFunction(
+  providers: ts.FunctionDeclaration[],
+  targetType: ts.Type
+): string {
+  // This maps the return type of each provider to its generated variable name.
+  const typeToVariableNameMap: Map<string, string> = new Map()
+  const importStatements: string[] = []
+  const providerCalls: string[] = []
+  const usedNames: Set<string> = new Set() // Tracks used names to avoid collisions.
+
   providers.forEach((provider) => {
-    const variableName = provider.returnType.symbol.name; // Simple variable naming strategy
-    variablesMap.set(provider.returnType.symbol.name, variableName);
+    const sig = checker.getSignatureFromDeclaration(provider)!
 
-    const dependencyArgs = provider.paramTypes
-      .map((dep) => variablesMap.get(dep.symbol.name))
-      .join(", ");
-    functionBody += `  const ${variableName} = ${provider.functionName}(${dependencyArgs});\n`;
-  });
+    const returnType = provider.type!.getText() // Assuming provider has a return type annotation.
+    const baseName = sig.getReturnType().symbol.getName().toLowerCase()
+    let uniqueName = baseName
+    let counter = 1
+    while (usedNames.has(uniqueName)) {
+      uniqueName = `${baseName}${counter}`
+      counter++
+    }
+    usedNames.add(uniqueName)
 
-  // Assuming the last provider's return type is the target type
-  functionBody += `  return ${variablesMap.get(targetType)};`;
+    // Generate variable name for the return type of the provider.
+    typeToVariableNameMap.set(returnType, uniqueName)
 
-  return `function init(): ${targetType} {\n${functionBody}\n}`;
+    // Generate import statement for the provider.
+    const importName = usedNames.has(provider.name!.text)
+      ? `${provider.name!.text} as ${provider.name!.text}Provider`
+      : provider.name!.text
+    importStatements.push(`import { ${provider.name!.text} } from "./di";`)
+
+    // Construct the call to the provider function, including passing the required parameters.
+    const paramVariableNames = provider.parameters.map((param) => {
+      const paramType = param.type!.getText()
+      if (!typeToVariableNameMap.has(paramType)) {
+        throw new Error(`No provider found for type ${paramType}`)
+      }
+      return typeToVariableNameMap.get(paramType)
+    })
+
+    providerCalls.push(
+      `  const ${uniqueName} = ${provider.name!.text}(${paramVariableNames.join(
+        ", "
+      )});`
+    )
+  })
+
+  const targetTypeSymbol = targetType.getSymbol()
+  const targetTypeName = targetTypeSymbol ? targetTypeSymbol.getName() : ""
+  const imports = importStatements.join("\n")
+  const body = providerCalls.join("\n")
+  const returnVariableName =
+    typeToVariableNameMap.get(
+      targetType.getSymbol()?.getEscapedName().toString() || ""
+    ) || ""
+  const returnStatement = `  return ${returnVariableName};`
+
+  // FIXME: attempt to import the returnType, and annotate the returnType of the generated init
+
+  // Construct and return the final output including imports, the function definition, and the return statement.
+  // const output = `${imports}\n\nexport function init(): ${targetTypeName} {\n${body}\n${returnStatement}\n}`
+  const output = `${imports}\n\nexport function init() {\n${body}\n${returnStatement}\n}`
+  return output
+}
+
+// `generateOutputFilePathUsingPath` generates a new file path with `_wire` appended to the filename
+// before the extension, using Node.js `path` module for handling file paths.
+// This approach is more robust and handles edge cases well, such as files without extensions.
+// `inputFilePath`: A string representing the path to the input file.
+// Returns a string representing the path to the output file with `_wire` appended to the filename.
+function wireOutputPath(inputFilePath: string): string {
+  // Extract the directory, filename without extension, and extension from the input path.
+  const dirname = path.dirname(inputFilePath)
+  const extname = path.extname(inputFilePath)
+  const basename = path.basename(inputFilePath, extname)
+
+  // Append '_wire' to the basename, then reconstruct the path.
+  const outputFileName = `${basename}_wire${extname}`
+  const outputFilePath = path.join(dirname, outputFileName)
+
+  return outputFilePath
 }
 
 // main
 for (const sourceFile of program.getSourceFiles()) {
   if (sourceFile.fileName !== "di.ts") {
-    continue;
+    continue
   }
 
-  ts.forEachChild(sourceFile, visit);
+  // TODO: example code for generating import paths:
 
-  const deps = topologicalSort("Baz", dependencyGraph);
-  console.log(deps);
+  // const outputModuleFile = "di_gen.ts";
+  // const outputModuleFile2 = "out/di_gen.ts";
 
-  console.log(providerMap.keys());
+  // const declarationFileName = declaration.getSourceFile().fileName;
 
-  const initFn = generateInitFunction(
-    deps.map((dep) => providerMap.get(dep)!),
-    "Baz"
-  );
-  console.log(initFn);
+  // // Calculate the relative path from the declaration file to the outputModuleFile
+
+  // console.log(
+  //   `Import path for ${outputModuleFile}:`,
+  //   relativeImportPath(outputModuleFile, declarationFileName)
+  // );
+  // console.log(
+  //   `Import path for ${outputModuleFile2}:`,
+  //   relativeImportPath(outputModuleFile2, declarationFileName)
+  // );
+
+  ts.forEachChild(sourceFile, visit)
+
+  for (let provider of providerDeclarations) {
+    extractProviderInfo(provider)
+  }
+
+  // use the first injection function as init
+  const initDeclaration = injectionFunctionDeclarations[0]
+
+  const returnType = checker
+    .getSignatureFromDeclaration(initDeclaration)
+    ?.getReturnType()!
+
+  const deps = topologicalSort(returnType, dependencyGraph)
+
+  const linearizedProviders = deps.map((dep) => providerMap.get(dep)!)
+
+  // print the calling order of the providers
+  // for (let dep of deps) {
+  //   const provider = providerMap.get(dep)!
+  //   console.log(provider.getText())
+  // }
+
+  const initCode = generateInitFunction(linearizedProviders, returnType)
+  console.log(initCode)
+
+  const outputFile = wireOutputPath(sourceFile.fileName)
+
+  await Bun.write(outputFile, initCode)
 }
