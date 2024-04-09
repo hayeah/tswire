@@ -1,6 +1,7 @@
 import * as ts from "typescript";
-import { readFileSync } from "fs";
 import { topologicalSort } from "./topsort";
+
+import path from "path";
 
 // Load your TypeScript file
 const fileNames = ["di.ts"];
@@ -61,6 +62,7 @@ function isInjectionFunctionDeclaration(
     ts.isCallExpression(firstStatement.expression) &&
     firstStatement.expression.expression.getText() === "wire"
   ) {
+    processWireCallArguments(firstStatement.expression);
     return true;
   } else {
     return false;
@@ -158,6 +160,108 @@ function generateInitFunction(
   functionBody += `  return ${variablesMap.get(targetType)};`;
 
   return `function init(): ${targetType} {\n${functionBody}\n}`;
+}
+
+function isArrayLiteral(node: ts.Node): node is ts.ArrayLiteralExpression {
+  return node.kind === ts.SyntaxKind.ArrayLiteralExpression;
+}
+
+function isVariableDeclaration(node: ts.Node): node is ts.VariableDeclaration {
+  return node.kind === ts.SyntaxKind.VariableDeclaration;
+}
+
+function isFunctionDeclaration(node: ts.Node): node is ts.FunctionDeclaration {
+  return node.kind === ts.SyntaxKind.FunctionDeclaration;
+}
+
+function relativeImportPath(
+  outputModuleFile: string,
+  declarationFileName: string
+): string {
+  // const declarationFileName = declaration.getSourceFile().fileName;
+  // Calculate the relative path from the declaration file to the outputModuleFile
+  let importPath = path
+    .relative(path.dirname(outputModuleFile), declarationFileName)
+    // Remove the file extension
+    .replace(/\.\w+$/, "")
+    // Ensure import path format (replace \ with / for non-UNIX systems)
+    .replace(/\\/g, "/");
+  // If the path does not start with '.', add './' to make it a relative path
+  if (!importPath.startsWith(".")) {
+    importPath = "./" + importPath;
+  }
+
+  return importPath;
+}
+
+// Extends the visit function to handle the building of the dependency graph based on the `wire` function call arguments.
+function processWireCallArguments(node: ts.CallExpression): void {
+  // Assuming the wire function call is always the first statement of the function
+  // and its arguments are directly referencing provider functions.
+
+  // TODO: check that it's an identifier, and a single argument
+  node.arguments.forEach((arg) => {
+    if (ts.isIdentifier(arg)) {
+      // const argType = checker.getTypeAtLocation(arg);
+
+      let s = checker.getSymbolAtLocation(arg)!;
+
+      let d = s.valueDeclaration!;
+
+      if (isVariableDeclaration(d)) {
+        // No nesting for now. Just assume that each element MUST be
+        // identifiers.
+        //
+        // Find the declarations of the identifiers.
+
+        if (d.initializer && isArrayLiteral(d.initializer)) {
+          for (let e of d.initializer.elements) {
+            if (ts.isIdentifier(e)) {
+              const es = checker.getSymbolAtLocation(e)!;
+
+              const declaration = es.valueDeclaration!;
+
+              if (isFunctionDeclaration(declaration)) {
+                const isExported = declaration.modifiers?.some(
+                  (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
+                );
+
+                console.log("Declaration is a function declaration.");
+                console.log("exported:", isExported);
+                console.log("element", declaration.getFullText());
+
+                const outputModuleFile = "di_gen.ts";
+                const outputModuleFile2 = "out/di_gen.ts";
+
+                const declarationFileName =
+                  declaration.getSourceFile().fileName;
+
+                // Calculate the relative path from the declaration file to the outputModuleFile
+
+                console.log(
+                  `Import path for ${outputModuleFile}:`,
+                  relativeImportPath(outputModuleFile, declarationFileName)
+                );
+                console.log(
+                  `Import path for ${outputModuleFile2}:`,
+                  relativeImportPath(outputModuleFile2, declarationFileName)
+                );
+
+                // TODO:
+                //
+                // 1. check that the declaration is exported
+                // 2. given outputModuleFile, generate the import module path
+              } else {
+                console.log("Declaration is not a function declaration.");
+              }
+            }
+          }
+        }
+      }
+
+      console.log("here");
+    }
+  });
 }
 
 // main
