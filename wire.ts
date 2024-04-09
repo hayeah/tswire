@@ -198,70 +198,67 @@ function relativeImportPath(
 function processWireCallArguments(node: ts.CallExpression): void {
   // Assuming the wire function call is always the first statement of the function
   // and its arguments are directly referencing provider functions.
+  //
+  // It should have the form:
+  //
+  // wire(providers);
 
-  // TODO: check that it's an identifier, and a single argument
-  node.arguments.forEach((arg) => {
-    if (ts.isIdentifier(arg)) {
-      // const argType = checker.getTypeAtLocation(arg);
+  if (node.arguments.length != 1) {
+    throw new Error("wire function should have exactly one argument");
+  }
 
-      let s = checker.getSymbolAtLocation(arg)!;
+  const arg = node.arguments[0];
 
-      let d = s.valueDeclaration!;
+  if (!ts.isIdentifier(arg)) {
+    throw new Error("wire function argument should be a variable name");
+  }
 
-      if (isVariableDeclaration(d)) {
-        // No nesting for now. Just assume that each element MUST be
-        // identifiers.
-        //
-        // Find the declarations of the identifiers.
+  let s = checker.getSymbolAtLocation(arg);
+  let d = s?.valueDeclaration;
+  if (!s || !d) {
+    throw new Error("unknown symbol found for wire function argument");
+  }
 
-        if (d.initializer && isArrayLiteral(d.initializer)) {
-          for (let e of d.initializer.elements) {
-            if (ts.isIdentifier(e)) {
-              const es = checker.getSymbolAtLocation(e)!;
-
-              const declaration = es.valueDeclaration!;
-
-              if (isFunctionDeclaration(declaration)) {
-                const isExported = declaration.modifiers?.some(
-                  (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
-                );
-
-                console.log("Declaration is a function declaration.");
-                console.log("exported:", isExported);
-                console.log("element", declaration.getFullText());
-
-                const outputModuleFile = "di_gen.ts";
-                const outputModuleFile2 = "out/di_gen.ts";
-
-                const declarationFileName =
-                  declaration.getSourceFile().fileName;
-
-                // Calculate the relative path from the declaration file to the outputModuleFile
-
-                console.log(
-                  `Import path for ${outputModuleFile}:`,
-                  relativeImportPath(outputModuleFile, declarationFileName)
-                );
-                console.log(
-                  `Import path for ${outputModuleFile2}:`,
-                  relativeImportPath(outputModuleFile2, declarationFileName)
-                );
-
-                // TODO:
-                //
-                // 1. check that the declaration is exported
-                // 2. given outputModuleFile, generate the import module path
-              } else {
-                console.log("Declaration is not a function declaration.");
-              }
-            }
-          }
-        }
+  // Check that wire argument is of the form:
+  // const providers = [ provideFoo, provideBar, provideBaz ];
+  if (
+    isVariableDeclaration(d) &&
+    d.initializer &&
+    isArrayLiteral(d.initializer)
+  ) {
+    for (let e of d.initializer.elements) {
+      if (!ts.isIdentifier(e)) {
+        throw new Error("provider should be a function declaration");
       }
 
-      console.log("here");
+      const declaration = checker.getSymbolAtLocation(e)?.valueDeclaration;
+
+      if (declaration && isFunctionDeclaration(declaration)) {
+        const isExported = declaration.modifiers?.some(
+          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
+        );
+
+        console.log("exported:", isExported);
+        console.log("element", declaration.getFullText());
+
+        const outputModuleFile = "di_gen.ts";
+        const outputModuleFile2 = "out/di_gen.ts";
+
+        const declarationFileName = declaration.getSourceFile().fileName;
+
+        // Calculate the relative path from the declaration file to the outputModuleFile
+
+        console.log(
+          `Import path for ${outputModuleFile}:`,
+          relativeImportPath(outputModuleFile, declarationFileName)
+        );
+        console.log(
+          `Import path for ${outputModuleFile2}:`,
+          relativeImportPath(outputModuleFile2, declarationFileName)
+        );
+      }
     }
-  });
+  }
 }
 
 // main
