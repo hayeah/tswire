@@ -79,14 +79,6 @@ function extractProviderInfo(fndef: ts.FunctionDeclaration): void {
 
   providerMap.set(returnType, fndef)
 
-  // {
-  //   functionName,
-  //   returnType: signature.getReturnType(),
-  //   paramTypes: signature
-  //     .getParameters()
-  //     .map((param) => checker.getTypeAtLocation(param.valueDeclaration!)),
-  // }
-
   let dependencies = dependencyGraph.get(returnType)
   if (!dependencies) {
     dependencies = new Set()
@@ -291,24 +283,6 @@ for (const sourceFile of program.getSourceFiles()) {
   if (sourceFile.fileName !== "di.ts") {
     continue
   }
-
-  // TODO: example code for generating import paths:
-
-  // const outputModuleFile = "di_gen.ts";
-  // const outputModuleFile2 = "out/di_gen.ts";
-
-  // const declarationFileName = declaration.getSourceFile().fileName;
-
-  // // Calculate the relative path from the declaration file to the outputModuleFile
-
-  // console.log(
-  //   `Import path for ${outputModuleFile}:`,
-  //   relativeImportPath(outputModuleFile, declarationFileName)
-  // );
-  // console.log(
-  //   `Import path for ${outputModuleFile2}:`,
-  //   relativeImportPath(outputModuleFile2, declarationFileName)
-  // );
 
   ts.forEachChild(sourceFile, visit)
 
