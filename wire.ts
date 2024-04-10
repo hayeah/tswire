@@ -1,12 +1,20 @@
 import * as ts from "typescript"
 import { topologicalSort } from "./topsort"
-
+import { program } from "commander"
 import path from "path"
 
-// Load your TypeScript file
-const fileNames = ["di.ts"]
-const program = ts.createProgram(fileNames, { allowJs: true })
-const checker = program.getTypeChecker()
+program
+  .arguments("<rootFile>")
+  .option("-f, --foo", "use foo", false)
+  .parse(process.argv)
+
+const args = program.args
+const opts = program.opts()
+
+const rootFile = args[0]
+const rootFiles = [rootFile]
+const tsprogram = ts.createProgram(rootFiles, { allowJs: true })
+const checker = tsprogram.getTypeChecker()
 
 function kindOf(node: ts.Node): string {
   return ts.SyntaxKind[node.kind]
@@ -279,9 +287,12 @@ function wireOutputPath(inputFilePath: string): string {
 }
 
 // main
-for (const sourceFile of program.getSourceFiles()) {
-  if (sourceFile.fileName !== "di.ts") {
-    continue
+// for (const sourceFile of tsprogram.getSourceFiles()) {
+// }
+for (const rootFile of rootFiles) {
+  const sourceFile = tsprogram.getSourceFile(rootFile)
+  if (!sourceFile) {
+    throw new Error("source file not found")
   }
 
   ts.forEachChild(sourceFile, visit)
