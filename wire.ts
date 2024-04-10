@@ -279,8 +279,8 @@ function wireOutputPath(inputFilePath: string): string {
   const extname = path.extname(inputFilePath)
   const basename = path.basename(inputFilePath, extname)
 
-  // Append '_wire' to the basename, then reconstruct the path.
-  const outputFileName = `${basename}_wire${extname}`
+  // Append '_gen' to the basename, then reconstruct the path.
+  const outputFileName = `${basename}_gen${extname}`
   const outputFilePath = path.join(dirname, outputFileName)
 
   return outputFilePath
