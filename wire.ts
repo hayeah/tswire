@@ -35,7 +35,7 @@ function isInjectionFunctionDeclaration(
   if (
     ts.isExpressionStatement(firstStatement) &&
     ts.isCallExpression(firstStatement.expression) &&
-    firstStatement.expression.expression.getText() === "wire"
+    firstStatement.expression.expression.getText() === "tswire"
   ) {
     processWireCallArguments(firstStatement.expression)
     return true
