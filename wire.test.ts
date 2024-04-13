@@ -64,3 +64,32 @@ test("Resolvers - Linearize Providers", () => {
   const expectedProviderNames = ["provideFoo", "provideBar", "provideBaz"]
   expect(resolvedProviderNames).toEqual(expectedProviderNames)
 })
+
+test("Resolvers - Linearize Providers", () => {
+  const initializer = initializers[0]
+  const resolver = new Resolver(initializer.providers, checker)
+  const providers = resolver.collectProviders(initializer.providers)
+
+  const lproviders = resolver.linearizeProvidersForReturnType(
+    providers,
+    initializer.returnType
+  )
+
+  const initcode = resolver
+    .generateInitFunction(lproviders, initializer.returnType)
+    .trim()
+
+  expect(initcode).toEqual(
+    `
+import { provideFoo } from "./di";
+import { provideBar } from "./di";
+import { provideBaz } from "./di";
+
+export function init() {
+  const foo = provideFoo();
+  const bar = provideBar(foo);
+  const baz = provideBaz(foo, bar);
+  return baz;
+}`.trim()
+  )
+})

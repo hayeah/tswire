@@ -131,6 +131,79 @@ export class Resolver {
 
     return linearizedProviders
   }
+
+  // `generateInitFunction` constructs the TypeScript code for an initialization function
+  // that uses the sorted providers to satisfy dependencies for a target type.
+  // The function constructs the required import statements dynamically to avoid naming conflicts
+  // and ensure that only necessary provider functions are imported and used.
+  // `providers`: An array of FunctionDeclaration objects representing the sorted providers.
+  // `targetType`: The Type object representing the type we aim to construct.
+  // Returns a string containing the TypeScript code for the initialization function and necessary imports.
+  public generateInitFunction(
+    providers: ts.FunctionDeclaration[],
+    targetType: ts.Type
+  ): string {
+    // This maps the return type of each provider to its generated variable name.
+    const typeToVariableNameMap: Map<string, string> = new Map()
+    const importStatements: string[] = []
+    const providerCalls: string[] = []
+    const usedNames: Set<string> = new Set() // Tracks used names to avoid collisions.
+
+    providers.forEach((provider) => {
+      const sig = this.checker.getSignatureFromDeclaration(provider)!
+
+      const returnType = provider.type!.getText() // Assuming provider has a return type annotation.
+      const baseName = sig.getReturnType().symbol.getName().toLowerCase()
+      let uniqueName = baseName
+      let counter = 1
+      while (usedNames.has(uniqueName)) {
+        uniqueName = `${baseName}${counter}`
+        counter++
+      }
+      usedNames.add(uniqueName)
+
+      // Generate variable name for the return type of the provider.
+      typeToVariableNameMap.set(returnType, uniqueName)
+
+      // Generate import statement for the provider.
+      const importName = usedNames.has(provider.name!.text)
+        ? `${provider.name!.text} as ${provider.name!.text}Provider`
+        : provider.name!.text
+      importStatements.push(`import { ${provider.name!.text} } from "./di";`)
+
+      // Construct the call to the provider function, including passing the required parameters.
+      const paramVariableNames = provider.parameters.map((param) => {
+        const paramType = param.type!.getText()
+        if (!typeToVariableNameMap.has(paramType)) {
+          throw new Error(`No provider found for type ${paramType}`)
+        }
+        return typeToVariableNameMap.get(paramType)
+      })
+
+      providerCalls.push(
+        `  const ${uniqueName} = ${
+          provider.name!.text
+        }(${paramVariableNames.join(", ")});`
+      )
+    })
+
+    const targetTypeSymbol = targetType.getSymbol()
+    const targetTypeName = targetTypeSymbol ? targetTypeSymbol.getName() : ""
+    const imports = importStatements.join("\n")
+    const body = providerCalls.join("\n")
+    const returnVariableName =
+      typeToVariableNameMap.get(
+        targetType.getSymbol()?.getEscapedName().toString() || ""
+      ) || ""
+    const returnStatement = `  return ${returnVariableName};`
+
+    // FIXME: attempt to import the returnType, and annotate the returnType of the generated init
+
+    // Construct and return the final output including imports, the function definition, and the return statement.
+    // const output = `${imports}\n\nexport function init(): ${targetTypeName} {\n${body}\n${returnStatement}\n}`
+    const output = `${imports}\n\nexport function init() {\n${body}\n${returnStatement}\n}`
+    return output
+  }
 }
 
 export class Initializer {
