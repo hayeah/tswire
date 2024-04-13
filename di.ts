@@ -27,13 +27,13 @@ export function provideBaz(foo: Foo, bar: Bar): Baz {
   return { foo, bar }
 }
 
-export const providers = [provideFoo, provideBar, provideBaz]
+// export const providers = [provideFoo, provideBar, provideBaz]
 
 // The function's first statement uses the special `tswire` function to mark the
 // function for dependency injection. The argument to the `tswire` function are
 // the providers that are used to resolve the dependencies.
 function init(): Baz {
-  tswire(providers)
+  tswire([provideFoo, provideBar, provideBaz])
   return null as any
 }
 
