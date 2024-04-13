@@ -1,10 +1,20 @@
 import * as ts from "typescript"
+import { topologicalSort } from "./topsort"
 
 const nonInjectableReturnTypes =
   ts.TypeFlags.Void |
   ts.TypeFlags.Any |
   ts.TypeFlags.Undefined |
   ts.TypeFlags.Never
+
+// `DependencyGraph` is a mapping that represents the dependencies between types in the DI system.
+// The key is a string representing the name of a type (the return type of a provider).
+// The value is a Set of strings, where each string represents the name of a type that the key type depends on (parameter types of the provider).
+// For example, if a provider function returns a type `A` and requires types `B` and `C` as inputs,
+// the graph will have an entry with `A` as the key, and a set containing `B` and `C`.
+// This graph is used to determine the order in which provider functions should be called to satisfy dependencies,
+// ensuring that all inputs for a given provider are available before it is invoked.
+type DependencyGraph = Map<ts.Type, Set<ts.Type>>
 
 export class Resolver {
   constructor(public entry: ts.Expression, public checker: ts.TypeChecker) {}
@@ -15,7 +25,7 @@ export class Resolver {
    * @param arg The expression to resolve for provider declarations.
    * @returns An array of function declarations corresponding to providers.
    */
-  public resolveProviders(arg: ts.Expression): ts.FunctionDeclaration[] {
+  public collectProviders(arg: ts.Expression): ts.FunctionDeclaration[] {
     const providerDeclarations: ts.FunctionDeclaration[] = []
     const checker = this.checker
 
@@ -59,7 +69,70 @@ export class Resolver {
 
     return providerDeclarations
   }
+
+  /**
+   * Builds a dependency graph from collected provider declarations.
+   * This graph maps the return types of provider functions to a set of types they depend on.
+   * @returns The DependencyGraph mapping provider return types to their dependencies.
+   */
+  public buildDependencyGraph(): DependencyGraph {
+    const dependencyGraph: DependencyGraph = new Map()
+    const providers = this.collectProviders(this.entry)
+
+    for (const provider of providers) {
+      const signature = this.checker.getSignatureFromDeclaration(provider)
+      if (!signature) continue
+
+      const returnType = signature.getReturnType()
+
+      const paramTypes = signature.getParameters().map((param) => {
+        return this.checker.getTypeAtLocation(param.valueDeclaration!)
+      })
+
+      let dependencies = dependencyGraph.get(returnType)
+      if (!dependencies) {
+        dependencies = new Set<ts.Type>()
+        dependencyGraph.set(returnType, dependencies)
+      }
+
+      for (const paramType of paramTypes) {
+        dependencies.add(paramType)
+      }
+    }
+
+    return dependencyGraph
+  }
+
+  // public providerMap(): Map<ts.Type, ts.FunctionDeclaration> {
+  //   return
+  // }
+
+  public linearizeProvidersForReturnType(
+    providers: ts.FunctionDeclaration[],
+    returnType: ts.Type
+  ): ts.FunctionDeclaration[] {
+    const providerMap: Map<ts.Type, ts.FunctionDeclaration> = new Map()
+
+    // populate providerMap with providers. This is just a map from the return
+    // type of the provider to the provider.
+    for (let provider of providers) {
+      const signature = this.checker.getSignatureFromDeclaration(provider)
+      if (!signature) continue
+
+      const returnType = signature.getReturnType()
+
+      providerMap.set(returnType, provider)
+    }
+
+    const dependencyGraph = this.buildDependencyGraph()
+    const deps = topologicalSort(returnType, dependencyGraph)
+
+    const linearizedProviders = deps.map((dep) => providerMap.get(dep)!)
+
+    return linearizedProviders
+  }
 }
+
 export class Initializer {
   constructor(
     public declaration: ts.FunctionDeclaration,

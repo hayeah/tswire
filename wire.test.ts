@@ -28,14 +28,41 @@ test("Injection Analyzer - Initializer Detection and Return Type", () => {
   expect(initializersInfo).toEqual(expectedInitializers)
 })
 
-test("Resolvers - Collect Providers", () => {
+test("Resolvers - Collect & Linearize Providers", () => {
   const initializer = initializers[0]
-
   const resolver = new Resolver(initializer.providers, checker)
 
-  const providers = resolver.resolveProviders(initializer.providers)
+  const providers = resolver.collectProviders(initializer.providers)
 
-  const resolvedProviderNames = providers.map((provider) => provider.name?.text)
+  const resolvedProviderNames = providers
+    .map((provider) => provider.name?.text)
+    .sort()
+
+  // Define expected provider names based on what you anticipate the initializer to include
+  const expectedProviderNames = [
+    "provideFoo",
+    "provideBar",
+    "provideBaz",
+    "provideNotUsed",
+  ].sort()
+
+  // Perform the test assertion to check if all providers are collected and resolved correctly
+  expect(resolvedProviderNames).toEqual(expectedProviderNames)
+})
+
+test("Resolvers - Linearize Providers", () => {
+  const initializer = initializers[0]
+  const resolver = new Resolver(initializer.providers, checker)
+  const providers = resolver.collectProviders(initializer.providers)
+
+  const lproviders = resolver.linearizeProvidersForReturnType(
+    providers,
+    initializer.returnType
+  )
+
+  const resolvedProviderNames = lproviders.map(
+    (provider) => provider.name?.text
+  )
 
   // Define expected provider names based on what you anticipate the initializer to include
   const expectedProviderNames = ["provideFoo", "provideBar", "provideBaz"]

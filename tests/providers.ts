@@ -1,5 +1,9 @@
 import { tswire } from ".."
 
+interface NotUsed {
+  value: number
+}
+
 interface Foo {
   foo: string
 }
@@ -19,12 +23,16 @@ export async function providePromiseFoo(): Promise<Foo> {
   return { foo: "foo" }
 }
 
-export function provideFoo(): Foo {
-  return { foo: "foo" }
+export function provideNotUsed(): NotUsed {
+  return { value: 42 }
 }
 
 export function provideBar(foo: Foo): Bar {
   return { bar: "bar", foo }
+}
+
+export function provideFoo(): Foo {
+  return { foo: "foo" }
 }
 
 export function provideBaz(foo: Foo, bar: Bar): Baz {
@@ -37,7 +45,7 @@ function notInitFunction() {
 }
 
 function initWithArrayValue(): Baz {
-  tswire([provideFoo, provideBar, provideBaz])
+  tswire([provideBar, provideFoo, provideBaz, provideNotUsed])
   return null as any
 }
 
