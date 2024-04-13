@@ -77,19 +77,23 @@ test("Resolvers - Linearize Providers", () => {
   )
 
   const initcode = resolver
-    .generateInitFunction(lproviders, initializer.returnType)
+    .generateInitFunction("di", lproviders, initializer.returnType)
     .trim()
+
+  // console.log(initcode)
 
   expect(initcode).toEqual(
     `
 import { provideFoo } from "./di";
 import { provideBar } from "./di";
+import { FooClass } from "./di";
 import { provideBaz } from "./di";
 
-export function init() {
+export async function init() {
   const foo = provideFoo();
-  const bar = provideBar(foo);
-  const baz = provideBaz(foo, bar);
+  const bar = await provideBar(foo);
+  const fooclass = new FooClass(bar);
+  const baz = provideBaz(foo, bar, fooclass);
   return baz;
 }`.trim()
   )

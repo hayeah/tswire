@@ -28,7 +28,7 @@ export function provideNotUsed(): NotUsed {
   return { value: 42 }
 }
 
-export function provideBar(foo: Foo): Bar {
+export async function provideBar(foo: Foo): Promise<Bar> {
   return { bar: "bar", foo }
 }
 

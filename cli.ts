@@ -31,7 +31,11 @@ const lproviders = resolver.linearizeProvidersForReturnType(
 )
 
 const initcode = resolver
-  .generateInitFunction(lproviders, initializer.returnType)
+  .generateInitFunction(
+    path.basename(rootFile),
+    lproviders,
+    initializer.returnType
+  )
   .trim()
 
 // `wireOutputPath` generates a new file path with `_wire` appended to the
