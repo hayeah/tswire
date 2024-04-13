@@ -23,7 +23,7 @@ export async function providePromiseFoo(): Promise<Foo> {
   return { foo: "foo" }
 }
 
-export function provideNotUsed(): NotUsed {
+export function providerNotUsed(): NotUsed {
   return { value: 42 }
 }
 
@@ -45,7 +45,7 @@ function notInitFunction() {
 }
 
 function initWithArrayValue(): Baz {
-  tswire([provideBar, provideFoo, provideBaz, provideNotUsed])
+  tswire([provideBar, provideFoo, provideBaz, providerNotUsed])
   return null as any
 }
 

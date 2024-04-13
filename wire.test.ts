@@ -24,7 +24,6 @@ test("Injection Analyzer - Initializer Detection and Return Type", () => {
     { name: "initWithAsyncProviders", returnType: "Foo" },
   ]
 
-  // Assert that each initializer is detected correctly with the expected return type
   expect(initializersInfo).toEqual(expectedInitializers)
 })
 
@@ -38,7 +37,6 @@ test("Resolvers - Collect & Linearize Providers", () => {
     .map((provider) => provider.name?.text)
     .sort()
 
-  // Define expected provider names based on what you anticipate the initializer to include
   const expectedProviderNames = [
     "provideFoo",
     "provideBar",
@@ -46,7 +44,6 @@ test("Resolvers - Collect & Linearize Providers", () => {
     "provideNotUsed",
   ].sort()
 
-  // Perform the test assertion to check if all providers are collected and resolved correctly
   expect(resolvedProviderNames).toEqual(expectedProviderNames)
 })
 
@@ -64,9 +61,6 @@ test("Resolvers - Linearize Providers", () => {
     (provider) => provider.name?.text
   )
 
-  // Define expected provider names based on what you anticipate the initializer to include
   const expectedProviderNames = ["provideFoo", "provideBar", "provideBaz"]
-
-  // Perform the test assertion to check if all providers are collected and resolved correctly
   expect(resolvedProviderNames).toEqual(expectedProviderNames)
 })
