@@ -17,6 +17,7 @@ interface Bar {
 interface Baz {
   foo: Foo
   bar: Bar
+  fooClass: FooClass
 }
 
 export async function providePromiseFoo(): Promise<Foo> {
@@ -27,7 +28,7 @@ export function provideNotUsed(): NotUsed {
   return { value: 42 }
 }
 
-export function provideBar(foo: Foo): Bar {
+export async function provideBar(foo: Foo): Promise<Bar> {
   return { bar: "bar", foo }
 }
 
@@ -35,8 +36,12 @@ export function provideFoo(): Foo {
   return { foo: "foo" }
 }
 
-export function provideBaz(foo: Foo, bar: Bar): Baz {
-  return { foo, bar }
+export function provideBaz(foo: Foo, bar: Bar, fooClass: FooClass): Baz {
+  return { foo, bar, fooClass }
+}
+
+export class FooClass {
+  constructor(public baz: Bar) {}
 }
 
 // not an initializer because it has no return type
@@ -45,7 +50,7 @@ function notInitFunction() {
 }
 
 function initWithArrayValue(): Baz {
-  tswire([provideBar, provideFoo, provideBaz, provideNotUsed])
+  tswire([provideBar, provideFoo, provideBaz, provideNotUsed, FooClass])
   return null as any
 }
 
@@ -65,3 +70,13 @@ function initWithAsyncProviders(): Foo {
   tswire([providePromiseFoo])
   return null as any
 }
+
+// function tsobject<T>(arg: any): T {
+//   return null as any
+// }
+
+// function initWithInterface(): Foo {
+//   let bar: Bar = null as any
+//   tswire([tsobject<Bar>("*")])
+//   return null as any
+// }

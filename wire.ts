@@ -7,6 +7,120 @@ const nonInjectableReturnTypes =
   ts.TypeFlags.Undefined |
   ts.TypeFlags.Never
 
+interface ProviderInterface {
+  exportName(): string
+
+  inputTypes(): ts.Type[]
+  outputType(): ts.Type
+}
+
+export class ClassProvider implements ProviderInterface {
+  constructor(
+    protected declaration: ts.ClassDeclaration,
+    protected checker: ts.TypeChecker
+  ) {}
+
+  exportName(): string {
+    return this.declaration.name!.text
+  }
+
+  inputTypes(): ts.Type[] {
+    const constructor = this.findConstructor()
+    if (!constructor) {
+      // If no constructor is found, return an empty array indicating no inputs are needed.
+      return []
+    }
+
+    // Map each parameter in the constructor to its type.
+    return constructor.parameters.map((param) =>
+      this.checker.getTypeAtLocation(param)
+    )
+  }
+
+  outputType(): ts.Type {
+    // The output type is the class type itself.
+    return this.checker.getTypeAtLocation(this.declaration.name!)
+  }
+
+  private findConstructor(): ts.ConstructorDeclaration | null {
+    // Check if the class has its own constructor.
+    const constructor = this.declaration.members.find(
+      ts.isConstructorDeclaration
+    ) as ts.ConstructorDeclaration | undefined
+
+    if (constructor) {
+      return constructor
+    }
+
+    // If there's no constructor, check superclasses recursively.
+    // Note: This part can get complex if you need to handle inherited constructors from superclasses.
+    // This implementation assumes no need to look into superclasses for simplification.
+    return null
+  }
+}
+
+export class FunctionProvider implements ProviderInterface {
+  constructor(
+    protected declaration: ts.FunctionDeclaration,
+    protected checker: ts.TypeChecker
+  ) {}
+
+  exportName(): string {
+    return this.declaration.name!.text
+  }
+
+  get isAsync(): boolean {
+    return !!this.declaration.modifiers?.some(
+      (mod) => mod.kind === ts.SyntaxKind.AsyncKeyword
+    )
+  }
+
+  unwrapAsyncPromiseType(returnType: ts.Type): ts.Type {
+    if (returnType.symbol.name !== "Promise") {
+      throw new Error("Expected a Promise type")
+    }
+
+    // I can't figure out if there is a type narrow in the compiler API
+    const targs: ts.Type[] | undefined = (returnType as any)
+      .resolvedTypeArguments
+
+    if (targs && targs.length == 1) {
+      return targs[0]
+    }
+
+    throw new Error("No type argument found for Promise type")
+  }
+
+  outputType(): ts.Type {
+    const signature = this.checker.getSignatureFromDeclaration(
+      this.declaration as ts.FunctionDeclaration
+    )
+
+    if (!signature) {
+      throw new Error("No signature found for provider function")
+    }
+
+    // this.checker.getTypeArguments(signature.getReturnType()!
+
+    const returnType = signature.getReturnType()
+
+    return this.isAsync ? this.unwrapAsyncPromiseType(returnType) : returnType
+  }
+
+  inputTypes(): ts.Type[] {
+    const signature = this.checker.getSignatureFromDeclaration(
+      this.declaration as ts.FunctionDeclaration
+    )
+    return signature
+      ? signature
+          .getParameters()
+          .map((param) =>
+            this.checker.getTypeAtLocation(param.valueDeclaration!)
+          )
+      : []
+  }
+}
+
 // `DependencyGraph` is a mapping that represents the dependencies between types in the DI system.
 // The key is a string representing the name of a type (the return type of a provider).
 // The value is a Set of strings, where each string represents the name of a type that the key type depends on (parameter types of the provider).
@@ -25,8 +139,8 @@ export class Resolver {
    * @param arg The expression to resolve for provider declarations.
    * @returns An array of function declarations corresponding to providers.
    */
-  public collectProviders(arg: ts.Expression): ts.FunctionDeclaration[] {
-    const providerDeclarations: ts.FunctionDeclaration[] = []
+  public collectProviders(arg: ts.Expression): ProviderInterface[] {
+    const providerDeclarations: ProviderInterface[] = []
     const checker = this.checker
 
     function processExpression(expression: ts.Node): void {
@@ -52,6 +166,8 @@ export class Resolver {
         for (let elem of expression.elements) {
           processExpression(elem)
         }
+      } else if (ts.isClassDeclaration(expression)) {
+        providerDeclarations.push(new ClassProvider(expression, checker))
       } else if (ts.isFunctionDeclaration(expression)) {
         const isExported = expression.modifiers?.some(
           (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
@@ -61,7 +177,7 @@ export class Resolver {
           throw new Error("Provider function must be exported")
         }
 
-        providerDeclarations.push(expression)
+        providerDeclarations.push(new FunctionProvider(expression, checker))
       }
     }
 
@@ -80,22 +196,16 @@ export class Resolver {
     const providers = this.collectProviders(this.entry)
 
     for (const provider of providers) {
-      const signature = this.checker.getSignatureFromDeclaration(provider)
-      if (!signature) continue
+      const outputType = provider.outputType()
+      const inputTypes = provider.inputTypes()
 
-      const returnType = signature.getReturnType()
-
-      const paramTypes = signature.getParameters().map((param) => {
-        return this.checker.getTypeAtLocation(param.valueDeclaration!)
-      })
-
-      let dependencies = dependencyGraph.get(returnType)
+      let dependencies = dependencyGraph.get(outputType)
       if (!dependencies) {
         dependencies = new Set<ts.Type>()
-        dependencyGraph.set(returnType, dependencies)
+        dependencyGraph.set(outputType, dependencies)
       }
 
-      for (const paramType of paramTypes) {
+      for (const paramType of inputTypes) {
         dependencies.add(paramType)
       }
     }
@@ -103,23 +213,16 @@ export class Resolver {
     return dependencyGraph
   }
 
-  // public providerMap(): Map<ts.Type, ts.FunctionDeclaration> {
-  //   return
-  // }
-
   public linearizeProvidersForReturnType(
-    providers: ts.FunctionDeclaration[],
+    providers: ProviderInterface[],
     returnType: ts.Type
-  ): ts.FunctionDeclaration[] {
-    const providerMap: Map<ts.Type, ts.FunctionDeclaration> = new Map()
+  ): ProviderInterface[] {
+    const providerMap: Map<ts.Type, ProviderInterface> = new Map()
 
     // populate providerMap with providers. This is just a map from the return
     // type of the provider to the provider.
     for (let provider of providers) {
-      const signature = this.checker.getSignatureFromDeclaration(provider)
-      if (!signature) continue
-
-      const returnType = signature.getReturnType()
+      const returnType = provider.outputType()
 
       providerMap.set(returnType, provider)
     }
@@ -140,20 +243,19 @@ export class Resolver {
   // `targetType`: The Type object representing the type we aim to construct.
   // Returns a string containing the TypeScript code for the initialization function and necessary imports.
   public generateInitFunction(
-    providers: ts.FunctionDeclaration[],
+    moduleImportName: string,
+    providers: ProviderInterface[],
     targetType: ts.Type
   ): string {
-    // This maps the return type of each provider to its generated variable name.
     const typeToVariableNameMap: Map<string, string> = new Map()
     const importStatements: string[] = []
     const providerCalls: string[] = []
     const usedNames: Set<string> = new Set() // Tracks used names to avoid collisions.
 
-    providers.forEach((provider) => {
-      const sig = this.checker.getSignatureFromDeclaration(provider)!
-
-      const returnType = provider.type!.getText() // Assuming provider has a return type annotation.
-      const baseName = sig.getReturnType().symbol.getName().toLowerCase()
+    for (let provider of providers) {
+      const outputType: ts.Type = provider.outputType()
+      const returnType: string = this.checker.typeToString(outputType) // This gets the type as a string
+      const baseName: string = returnType.toLowerCase()
       let uniqueName = baseName
       let counter = 1
       while (usedNames.has(uniqueName)) {
@@ -161,31 +263,43 @@ export class Resolver {
         counter++
       }
       usedNames.add(uniqueName)
-
-      // Generate variable name for the return type of the provider.
       typeToVariableNameMap.set(returnType, uniqueName)
 
-      // Generate import statement for the provider.
-      const importName = usedNames.has(provider.name!.text)
-        ? `${provider.name!.text} as ${provider.name!.text}Provider`
-        : provider.name!.text
-      importStatements.push(`import { ${provider.name!.text} } from "./di";`)
+      const providerTypeName = provider.exportName()
 
-      // Construct the call to the provider function, including passing the required parameters.
-      const paramVariableNames = provider.parameters.map((param) => {
-        const paramType = param.type!.getText()
+      // Generate import statement for the provider.
+      // const importName = usedNames.has(providerTypeName)
+      //   ? `${providerTypeName} as ${providerTypeName}Instance`
+      //   : providerTypeName
+
+      importStatements.push(
+        `import { ${providerTypeName} } from "./${moduleImportName}";`
+      )
+
+      // Construct the call to the provider function or class construction, including passing the required parameters.
+      const params: string[] = provider.inputTypes().map((type) => {
+        const paramType = this.checker.typeToString(type)
         if (!typeToVariableNameMap.has(paramType)) {
           throw new Error(`No provider found for type ${paramType}`)
         }
-        return typeToVariableNameMap.get(paramType)
+        return typeToVariableNameMap.get(paramType)!
       })
 
-      providerCalls.push(
-        `  const ${uniqueName} = ${
-          provider.name!.text
-        }(${paramVariableNames.join(", ")});`
-      )
-    })
+      if (provider instanceof FunctionProvider) {
+        const call = provider.isAsync
+          ? `  const ${uniqueName} = await ${providerTypeName}(${params.join(
+              ", "
+            )});`
+          : `  const ${uniqueName} = ${providerTypeName}(${params.join(", ")});`
+        providerCalls.push(call)
+      } else if (provider instanceof ClassProvider) {
+        providerCalls.push(
+          `  const ${uniqueName} = new ${providerTypeName}(${params.join(
+            ", "
+          )});`
+        )
+      }
+    }
 
     const targetTypeSymbol = targetType.getSymbol()
     const targetTypeName = targetTypeSymbol ? targetTypeSymbol.getName() : ""
@@ -195,13 +309,15 @@ export class Resolver {
       typeToVariableNameMap.get(
         targetType.getSymbol()?.getEscapedName().toString() || ""
       ) || ""
-    const returnStatement = `  return ${returnVariableName};`
+    const returnStatement = `return ${returnVariableName};`
 
-    // FIXME: attempt to import the returnType, and annotate the returnType of the generated init
+    const asyncKeyword = providers.some(
+      (provider) => provider instanceof FunctionProvider && provider.isAsync
+    )
+      ? "async "
+      : ""
 
-    // Construct and return the final output including imports, the function definition, and the return statement.
-    // const output = `${imports}\n\nexport function init(): ${targetTypeName} {\n${body}\n${returnStatement}\n}`
-    const output = `${imports}\n\nexport function init() {\n${body}\n${returnStatement}\n}`
+    const output = `${imports}\n\nexport ${asyncKeyword}function init() {\n${body}\n  ${returnStatement}\n}`
     return output
   }
 }

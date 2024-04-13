@@ -34,14 +34,15 @@ test("Resolvers - Collect & Linearize Providers", () => {
   const providers = resolver.collectProviders(initializer.providers)
 
   const resolvedProviderNames = providers
-    .map((provider) => provider.name?.text)
+    .map((provider) => provider.outputType().symbol.name)
     .sort()
 
   const expectedProviderNames = [
-    "provideFoo",
-    "provideBar",
-    "provideBaz",
-    "provideNotUsed",
+    "Bar",
+    "Baz",
+    "Foo",
+    "FooClass",
+    "NotUsed",
   ].sort()
 
   expect(resolvedProviderNames).toEqual(expectedProviderNames)
@@ -58,10 +59,10 @@ test("Resolvers - Linearize Providers", () => {
   )
 
   const resolvedProviderNames = lproviders.map(
-    (provider) => provider.name?.text
+    (provider) => provider.outputType().symbol.name
   )
 
-  const expectedProviderNames = ["provideFoo", "provideBar", "provideBaz"]
+  const expectedProviderNames = ["Foo", "Bar", "FooClass", "Baz"]
   expect(resolvedProviderNames).toEqual(expectedProviderNames)
 })
 
@@ -76,19 +77,23 @@ test("Resolvers - Linearize Providers", () => {
   )
 
   const initcode = resolver
-    .generateInitFunction(lproviders, initializer.returnType)
+    .generateInitFunction("di", lproviders, initializer.returnType)
     .trim()
+
+  // console.log(initcode)
 
   expect(initcode).toEqual(
     `
 import { provideFoo } from "./di";
 import { provideBar } from "./di";
+import { FooClass } from "./di";
 import { provideBaz } from "./di";
 
-export function init() {
+export async function init() {
   const foo = provideFoo();
-  const bar = provideBar(foo);
-  const baz = provideBaz(foo, bar);
+  const bar = await provideBar(foo);
+  const fooclass = new FooClass(bar);
+  const baz = provideBaz(foo, bar, fooclass);
   return baz;
 }`.trim()
   )
