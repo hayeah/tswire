@@ -7,6 +7,85 @@ const nonInjectableReturnTypes =
   ts.TypeFlags.Undefined |
   ts.TypeFlags.Never
 
+interface ProviderInterface {
+  inputTypes(): ts.Type[]
+  outputType(): ts.Type
+}
+
+export class ClassProvider implements ProviderInterface {
+  constructor(
+    protected declaration: ts.ClassDeclaration,
+    protected checker: ts.TypeChecker
+  ) {}
+
+  inputTypes(): ts.Type[] {
+    const constructor = this.findConstructor()
+    if (!constructor) {
+      // If no constructor is found, return an empty array indicating no inputs are needed.
+      return []
+    }
+
+    // Map each parameter in the constructor to its type.
+    return constructor.parameters.map((param) =>
+      this.checker.getTypeAtLocation(param)
+    )
+  }
+
+  outputType(): ts.Type {
+    // The output type is the class type itself.
+    return this.checker.getTypeAtLocation(this.declaration.name!)
+  }
+
+  private findConstructor(): ts.ConstructorDeclaration | null {
+    // Check if the class has its own constructor.
+    const constructor = this.declaration.members.find(
+      ts.isConstructorDeclaration
+    ) as ts.ConstructorDeclaration | undefined
+
+    if (constructor) {
+      return constructor
+    }
+
+    // If there's no constructor, check superclasses recursively.
+    // Note: This part can get complex if you need to handle inherited constructors from superclasses.
+    // This implementation assumes no need to look into superclasses for simplification.
+    return null
+  }
+}
+
+export class FunctionProvider implements ProviderInterface {
+  constructor(
+    protected declaration: ts.FunctionDeclaration,
+    protected checker: ts.TypeChecker
+  ) {}
+
+  get isAsync(): boolean {
+    return !!this.declaration.modifiers?.some(
+      (mod) => mod.kind === ts.SyntaxKind.AsyncKeyword
+    )
+  }
+
+  outputType(): ts.Type {
+    const signature = this.checker.getSignatureFromDeclaration(
+      this.declaration as ts.FunctionDeclaration
+    )
+    return signature ? signature.getReturnType() : this.checker.getVoidType()
+  }
+
+  inputTypes(): ts.Type[] {
+    const signature = this.checker.getSignatureFromDeclaration(
+      this.declaration as ts.FunctionDeclaration
+    )
+    return signature
+      ? signature
+          .getParameters()
+          .map((param) =>
+            this.checker.getTypeAtLocation(param.valueDeclaration!)
+          )
+      : []
+  }
+}
+
 // `DependencyGraph` is a mapping that represents the dependencies between types in the DI system.
 // The key is a string representing the name of a type (the return type of a provider).
 // The value is a Set of strings, where each string represents the name of a type that the key type depends on (parameter types of the provider).
@@ -25,8 +104,8 @@ export class Resolver {
    * @param arg The expression to resolve for provider declarations.
    * @returns An array of function declarations corresponding to providers.
    */
-  public collectProviders(arg: ts.Expression): ts.FunctionDeclaration[] {
-    const providerDeclarations: ts.FunctionDeclaration[] = []
+  public collectProviders(arg: ts.Expression): ProviderInterface[] {
+    const providerDeclarations: ProviderInterface[] = []
     const checker = this.checker
 
     function processExpression(expression: ts.Node): void {
@@ -52,6 +131,8 @@ export class Resolver {
         for (let elem of expression.elements) {
           processExpression(elem)
         }
+      } else if (ts.isClassDeclaration(expression)) {
+        providerDeclarations.push(new ClassProvider(expression, checker))
       } else if (ts.isFunctionDeclaration(expression)) {
         const isExported = expression.modifiers?.some(
           (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
@@ -61,7 +142,7 @@ export class Resolver {
           throw new Error("Provider function must be exported")
         }
 
-        providerDeclarations.push(expression)
+        providerDeclarations.push(new FunctionProvider(expression, checker))
       }
     }
 
@@ -80,22 +161,16 @@ export class Resolver {
     const providers = this.collectProviders(this.entry)
 
     for (const provider of providers) {
-      const signature = this.checker.getSignatureFromDeclaration(provider)
-      if (!signature) continue
+      const outputType = provider.outputType()
+      const inputTypes = provider.inputTypes()
 
-      const returnType = signature.getReturnType()
-
-      const paramTypes = signature.getParameters().map((param) => {
-        return this.checker.getTypeAtLocation(param.valueDeclaration!)
-      })
-
-      let dependencies = dependencyGraph.get(returnType)
+      let dependencies = dependencyGraph.get(outputType)
       if (!dependencies) {
         dependencies = new Set<ts.Type>()
-        dependencyGraph.set(returnType, dependencies)
+        dependencyGraph.set(outputType, dependencies)
       }
 
-      for (const paramType of paramTypes) {
+      for (const paramType of inputTypes) {
         dependencies.add(paramType)
       }
     }
@@ -103,23 +178,16 @@ export class Resolver {
     return dependencyGraph
   }
 
-  // public providerMap(): Map<ts.Type, ts.FunctionDeclaration> {
-  //   return
-  // }
-
   public linearizeProvidersForReturnType(
-    providers: ts.FunctionDeclaration[],
+    providers: ProviderInterface[],
     returnType: ts.Type
-  ): ts.FunctionDeclaration[] {
-    const providerMap: Map<ts.Type, ts.FunctionDeclaration> = new Map()
+  ): ProviderInterface[] {
+    const providerMap: Map<ts.Type, ProviderInterface> = new Map()
 
     // populate providerMap with providers. This is just a map from the return
     // type of the provider to the provider.
     for (let provider of providers) {
-      const signature = this.checker.getSignatureFromDeclaration(provider)
-      if (!signature) continue
-
-      const returnType = signature.getReturnType()
+      const returnType = provider.outputType()
 
       providerMap.set(returnType, provider)
     }

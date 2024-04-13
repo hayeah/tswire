@@ -34,14 +34,15 @@ test("Resolvers - Collect & Linearize Providers", () => {
   const providers = resolver.collectProviders(initializer.providers)
 
   const resolvedProviderNames = providers
-    .map((provider) => provider.name?.text)
+    .map((provider) => provider.outputType().symbol.name)
     .sort()
 
   const expectedProviderNames = [
-    "provideFoo",
-    "provideBar",
-    "provideBaz",
-    "provideNotUsed",
+    "Bar",
+    "Baz",
+    "Foo",
+    "FooClass",
+    "NotUsed",
   ].sort()
 
   expect(resolvedProviderNames).toEqual(expectedProviderNames)
@@ -58,10 +59,10 @@ test("Resolvers - Linearize Providers", () => {
   )
 
   const resolvedProviderNames = lproviders.map(
-    (provider) => provider.name?.text
+    (provider) => provider.outputType().symbol.name
   )
 
-  const expectedProviderNames = ["provideFoo", "provideBar", "provideBaz"]
+  const expectedProviderNames = ["Foo", "Bar", "FooClass", "Baz"]
   expect(resolvedProviderNames).toEqual(expectedProviderNames)
 })
 
