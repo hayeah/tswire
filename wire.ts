@@ -1,5 +1,6 @@
 import * as ts from "typescript"
 import { topologicalSort } from "./topsort"
+import path from "path"
 
 const nonInjectableReturnTypes =
   ts.TypeFlags.Void |
@@ -7,7 +8,37 @@ const nonInjectableReturnTypes =
   ts.TypeFlags.Undefined |
   ts.TypeFlags.Never
 
+function findSourceFile(node: ts.Node): ts.SourceFile {
+  let current: ts.Node = node
+  while (current && !ts.isSourceFile(current)) {
+    current = current.parent
+  }
+  return current as ts.SourceFile
+}
+
+function relativeImportPath(
+  outputModuleFile: string,
+  declarationFileName: string
+): string {
+  // const declarationFileName = declaration.getSourceFile().fileName;
+  // Calculate the relative path from the declaration file to the outputModuleFile
+  let importPath = path
+    .relative(path.dirname(outputModuleFile), declarationFileName)
+    // Remove the file extension
+    .replace(/\.\w+$/, "")
+    // Ensure import path format (replace \ with / for non-UNIX systems)
+    .replace(/\\/g, "/")
+  // If the path does not start with '.', add './' to make it a relative path
+  if (!importPath.startsWith(".")) {
+    importPath = "./" + importPath
+  }
+
+  return importPath
+}
+
 interface ProviderInterface {
+  node(): ts.Node
+
   exportName(): string
 
   inputTypes(): ts.Type[]
@@ -19,6 +50,10 @@ export class ClassProvider implements ProviderInterface {
     protected declaration: ts.ClassDeclaration,
     protected checker: ts.TypeChecker
   ) {}
+
+  node(): ts.Node {
+    return this.declaration
+  }
 
   exportName(): string {
     return this.declaration.name!.text
@@ -64,6 +99,10 @@ export class FunctionProvider implements ProviderInterface {
     protected declaration: ts.FunctionDeclaration,
     protected checker: ts.TypeChecker
   ) {}
+
+  node(): ts.Node {
+    return this.declaration
+  }
 
   exportName(): string {
     return this.declaration.name!.text
@@ -144,13 +183,45 @@ export class Resolver {
     const checker = this.checker
 
     function processExpression(expression: ts.Node): void {
-      if (ts.isIdentifier(expression)) {
+      if (ts.isPropertyAccessExpression(expression)) {
         const symbol = checker.getSymbolAtLocation(expression)
+
+        if (!symbol) {
+          throw new Error(`Unknown symbol found: ${expression.getText()}`)
+        }
+
         const declaration = symbol?.valueDeclaration
 
-        if (!symbol || !declaration) {
-          throw new Error("Unknown symbol found for wire function argument")
+        if (!declaration) {
+          throw new Error(`undeclared symbol found: ${symbol.name}`)
         }
+
+        processExpression(declaration)
+      } else if (ts.isIdentifier(expression)) {
+        let symbol = checker.getSymbolAtLocation(expression)
+        if (!symbol) {
+          throw new Error(`Unknown symbol found: ${expression.getText()}`)
+        }
+
+        // detect module reference, and resolved the aliased (i.e. imported)
+        // symbol
+        if (!symbol.valueDeclaration && ts.isModuleReference(expression)) {
+          // q: or just test for ~symbol.valueDeclaration?
+          // resolve module import
+          symbol = checker.getAliasedSymbol(symbol)
+        }
+
+        const declaration = symbol.valueDeclaration
+        if (!declaration) {
+          throw new Error(`undeclared symbol found: ${symbol.name}`)
+        }
+
+        // ts.isTypeAliasDeclaration(expression)
+        // ts.isImportTypeNode(expression)
+        // ts.isTypeReferenceNode(expression)
+        // ts.isModuleReference(expression)
+        // ts.isExternalModuleReference(expression)
+        // ts.isConstTypeReference(expression)
 
         processExpression(declaration)
 
@@ -230,7 +301,13 @@ export class Resolver {
     const dependencyGraph = this.buildDependencyGraph()
     const deps = topologicalSort(returnType, dependencyGraph)
 
-    const linearizedProviders = deps.map((dep) => providerMap.get(dep)!)
+    const linearizedProviders = deps.map((dep) => {
+      const provider = providerMap.get(dep)
+      if (!provider) {
+        throw new Error(`cannot find provider: ${dep.symbol.getName()}`)
+      }
+      return provider
+    })
 
     return linearizedProviders
   }
@@ -243,7 +320,7 @@ export class Resolver {
   // `targetType`: The Type object representing the type we aim to construct.
   // Returns a string containing the TypeScript code for the initialization function and necessary imports.
   public generateInitFunction(
-    moduleImportName: string,
+    outputModuleFile: string,
     providers: ProviderInterface[],
     targetType: ts.Type
   ): string {
@@ -272,8 +349,16 @@ export class Resolver {
       //   ? `${providerTypeName} as ${providerTypeName}Instance`
       //   : providerTypeName
 
+      // fully qualified file path name
+      const declarationFileName = findSourceFile(provider.node()).fileName
+
+      const importPath = relativeImportPath(
+        outputModuleFile,
+        declarationFileName
+      )
+
       importStatements.push(
-        `import { ${providerTypeName} } from "./${moduleImportName}";`
+        `import { ${providerTypeName} } from "${importPath}";`
       )
 
       // Construct the call to the provider function or class construction, including passing the required parameters.

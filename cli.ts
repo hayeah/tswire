@@ -8,19 +8,24 @@ import path from "path"
 import "./wire.ts"
 import { InjectionAnalyzer, Resolver } from "./wire.ts"
 
-program
-  .arguments("<rootFile>")
-  .option("-f, --foo", "use foo", false)
-  .parse(process.argv)
+// program
+//   .arguments("<rootFile>")
+//   .option("-f, --foo", "use foo", false)
+//   .parse(process.argv)
 
-const args = program.args
-const opts = program.opts()
+// const args = program.args
+// const opts = program.opts()
 
-const rootFile = args[0]
+// const rootFile = args[0]
+
+const rootFile = "/Users/me/src/hayeah/assets/debank/di.ts"
 
 const analyzer = new InjectionAnalyzer(rootFile)
 const checker = analyzer.checker
 const initializers = analyzer.findInitializers()
+if (initializers.length == 0) {
+  throw new Error("no initializer found")
+}
 const initializer = initializers[0]
 const resolver = new Resolver(initializer.providers, checker)
 const providers = resolver.collectProviders(initializer.providers)
