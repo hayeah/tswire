@@ -8,17 +8,15 @@ import path from "path"
 import "./wire.ts"
 import { InjectionAnalyzer, Resolver } from "./wire.ts"
 
-// program
-//   .arguments("<rootFile>")
-//   .option("-f, --foo", "use foo", false)
-//   .parse(process.argv)
+program
+  .arguments("<rootFile>")
+  .option("-f, --foo", "use foo", false)
+  .parse(process.argv)
 
-// const args = program.args
-// const opts = program.opts()
+const args = program.args
+const opts = program.opts()
 
-// const rootFile = args[0]
-
-const rootFile = "/Users/me/src/hayeah/assets/debank/di.ts"
+const rootFile = args[0]
 
 const analyzer = new InjectionAnalyzer(rootFile)
 const checker = analyzer.checker
