@@ -78,19 +78,47 @@ export class ClassProvider implements ProviderInterface {
   }
 
   private findConstructor(): ts.ConstructorDeclaration | null {
-    // Check if the class has its own constructor.
-    const constructor = this.declaration.members.find(
-      ts.isConstructorDeclaration
-    ) as ts.ConstructorDeclaration | undefined
+    let currentClass: ts.ClassDeclaration = this.declaration
 
-    if (constructor) {
-      return constructor
+    while (currentClass) {
+      const constructor = currentClass.members.find(
+        ts.isConstructorDeclaration
+      ) as ts.ConstructorDeclaration | undefined
+      if (constructor) {
+        return constructor
+      }
+
+      // Move up to the superclass (if any)
+      const superclass = this.findSuperClass(currentClass)
+      if (!superclass) {
+        return null
+      }
+      currentClass = superclass
+    }
+    return null
+  }
+
+  private findSuperClass(
+    classDeclaration: ts.ClassDeclaration
+  ): ts.ClassDeclaration | null {
+    const heritageClause = classDeclaration.heritageClauses?.find(
+      (h) => h.token === ts.SyntaxKind.ExtendsKeyword
+    )
+    if (!heritageClause || heritageClause.types.length === 0) {
+      return null
     }
 
-    // If there's no constructor, check superclasses recursively.
-    // Note: This part can get complex if you need to handle inherited constructors from superclasses.
-    // This implementation assumes no need to look into superclasses for simplification.
-    return null
+    const type = this.checker.getTypeAtLocation(heritageClause.types[0])
+    if (!type.symbol) {
+      return null
+    }
+
+    const declarations = type.symbol.declarations
+    const classDecl = declarations?.find(
+      (decl) => decl.kind === ts.SyntaxKind.ClassDeclaration
+    ) as ts.ClassDeclaration | undefined
+
+    return classDecl || null
   }
 }
 
@@ -303,6 +331,12 @@ export class Resolver {
 
     const linearizedProviders = deps.map((dep) => {
       const provider = providerMap.get(dep)
+
+      const symbol = dep.symbol
+      if ("intrinsicName" in dep) {
+        throw new Error(`intrinsic types not supported: ${dep.intrinsicName}`)
+      }
+
       if (!provider) {
         throw new Error(`cannot find provider: ${dep.symbol.getName()}`)
       }
