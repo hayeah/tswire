@@ -442,11 +442,20 @@ export class Resolver {
 }
 
 export class Initializer {
+  private resolver: Resolver
+
   constructor(
+    private context: InjectionAnalyzer,
     public declaration: ts.FunctionDeclaration,
     public signature: ts.Signature,
-    public providers: ts.Expression
-  ) {}
+    public providersEntry: ts.Expression
+  ) {
+    this.resolver = new Resolver(this.providersEntry, this.checker)
+  }
+
+  get checker(): ts.TypeChecker {
+    return this.context.checker
+  }
 
   get name(): string {
     return this.declaration.name!.text
@@ -454,6 +463,26 @@ export class Initializer {
 
   get returnType(): ts.Type {
     return this.signature.getReturnType()
+  }
+
+  public providers(): ProviderInterface[] {
+    return this.resolver.collectProviders(this.providersEntry)
+  }
+
+  public linearizedProviders(): ProviderInterface[] {
+    return this.resolver.linearizeProvidersForReturnType(
+      this.providers(),
+      this.returnType
+    )
+  }
+
+  public initializationCode(): string {
+    const moduleFile = path.basename(this.context.rootFile)
+    const providers = this.linearizedProviders()
+
+    return this.resolver
+      .generateInitFunction(moduleFile, providers, this.returnType)
+      .trim()
   }
 }
 
@@ -470,6 +499,7 @@ export class InjectionAnalyzer {
     const inits: Initializer[] = []
 
     const checker = this.checker
+    const self = this
 
     // checkAndReturnInitializer returns Initializer if a node is a function declaration with a `tswire` call.
     function checkAndReturnInitializer(node: ts.Node): Initializer | undefined {
@@ -505,7 +535,7 @@ export class InjectionAnalyzer {
         firstStatement.expression.arguments.length == 1
       ) {
         const providers = firstStatement.expression.arguments[0]
-        return new Initializer(node, signature, providers)
+        return new Initializer(self, node, signature, providers)
       }
     }
 

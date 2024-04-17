@@ -1,19 +1,28 @@
-import { expect, test } from "bun:test"
-import { InjectionAnalyzer, Resolver } from "./wire"
+import { expect, test, beforeAll } from "bun:test"
+import { Initializer, InjectionAnalyzer } from "./wire"
 import * as path from "path"
 
+// Set the path to the file containing the providers
 const providersFilePath = path.join(__dirname, "tests/providers.ts")
+// Create an instance of the analyzer
 const analyzer = new InjectionAnalyzer(providersFilePath)
-const checker = analyzer.checker
-const initializers = analyzer.findInitializers()
 
+// Initialize variables to be used before all tests
+let initializers: Initializer[]
+let initializer: Initializer
+
+beforeAll(() => {
+  // Find all initializers defined in the provided file
+  initializers = analyzer.findInitializers()
+  initializer = initializers[0]
+})
+
+// Test for correct detection of initializers and their return types
 test("Injection Analyzer - Initializer Detection and Return Type", () => {
   const initializersInfo = initializers.map((init) => {
-    const returnType = analyzer.checker.typeToString(init.returnType)
-
     return {
       name: init.name,
-      returnType: returnType,
+      returnType: analyzer.checker.typeToString(init.returnType),
     }
   })
 
@@ -27,11 +36,10 @@ test("Injection Analyzer - Initializer Detection and Return Type", () => {
   expect(initializersInfo).toEqual(expectedInitializers)
 })
 
+// Test collection and linearization of providers
 test("Resolvers - Collect & Linearize Providers", () => {
   const initializer = initializers[0]
-  const resolver = new Resolver(initializer.providers, checker)
-
-  const providers = resolver.collectProviders(initializer.providers)
+  const providers = initializer.providers()
 
   const resolvedProviderNames = providers
     .map((provider) => provider.outputType().symbol.name)
@@ -48,15 +56,9 @@ test("Resolvers - Collect & Linearize Providers", () => {
   expect(resolvedProviderNames).toEqual(expectedProviderNames)
 })
 
+// Test linearization of providers for a given return type
 test("Resolvers - Linearize Providers", () => {
-  const initializer = initializers[0]
-  const resolver = new Resolver(initializer.providers, checker)
-  const providers = resolver.collectProviders(initializer.providers)
-
-  const lproviders = resolver.linearizeProvidersForReturnType(
-    providers,
-    initializer.returnType
-  )
+  const lproviders = initializer.linearizedProviders()
 
   const resolvedProviderNames = lproviders.map(
     (provider) => provider.outputType().symbol.name
@@ -66,28 +68,15 @@ test("Resolvers - Linearize Providers", () => {
   expect(resolvedProviderNames).toEqual(expectedProviderNames)
 })
 
-test("Resolvers - Linearize Providers", () => {
-  const initializer = initializers[0]
-  const resolver = new Resolver(initializer.providers, checker)
-  const providers = resolver.collectProviders(initializer.providers)
+// Test generation of initialization code
+test("Resolvers - Generate Initialization Code", () => {
+  const initCode = initializer.initializationCode()
 
-  const lproviders = resolver.linearizeProvidersForReturnType(
-    providers,
-    initializer.returnType
-  )
-
-  const initcode = resolver
-    .generateInitFunction("di", lproviders, initializer.returnType)
-    .trim()
-
-  // console.log(initcode)
-
-  expect(initcode).toEqual(
-    `
-import { provideFoo } from "./di";
-import { provideBar } from "./di";
-import { FooClass } from "./di";
-import { provideBaz } from "./di";
+  const expectedCode = `
+import { provideFoo } from "./tests/providers";
+import { provideBar } from "./tests/providers";
+import { FooClass } from "./tests/providers";
+import { provideBaz } from "./tests/providers";
 
 export async function init() {
   const foo = provideFoo();
@@ -96,5 +85,8 @@ export async function init() {
   const baz = provideBaz(foo, bar, fooclass);
   return baz;
 }`.trim()
-  )
+
+  console.log(initCode)
+
+  expect(initCode).toEqual(expectedCode)
 })
