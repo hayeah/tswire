@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test, beforeAll } from "bun:test"
 import { InjectionAnalyzer, Resolver } from "./wire"
 import * as path from "path"
 
