@@ -18,7 +18,7 @@ function analyzerForFile(filePath: string): InjectionAnalyzer {
 test("relativeImportPath", () => {
   const importPath = relativeImportPath(
     "tests/type_aliasing_gen.ts",
-    "tests/type_aliasing.ts"
+    "tests/type_aliasing.ts",
   )
   expect(importPath).toEqual("./type_aliasing")
 })
@@ -105,7 +105,7 @@ describe("basic tests", () => {
     const { linearizedProviders } = context
 
     const resolvedProviderNames = linearizedProviders.map((provider) =>
-      typeName(provider.outputType())
+      typeName(provider.outputType()),
     )
 
     const expectedProviderNames = ["Foo", "Bar", "FooClass", "Baz"]

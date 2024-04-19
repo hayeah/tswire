@@ -18,7 +18,7 @@ function findSourceFile(node: ts.Node): ts.SourceFile {
 
 export function relativeImportPath(
   outputModuleFile: string,
-  declarationFileName: string
+  declarationFileName: string,
 ): string {
   // const declarationFileName = declaration.getSourceFile().fileName;
   // Calculate the relative path from the declaration file to the outputModuleFile
@@ -48,7 +48,7 @@ export interface ProviderInterface {
 export class ClassProvider implements ProviderInterface {
   constructor(
     protected declaration: ts.ClassDeclaration,
-    protected checker: ts.TypeChecker
+    protected checker: ts.TypeChecker,
   ) {}
 
   node(): ts.Node {
@@ -68,7 +68,7 @@ export class ClassProvider implements ProviderInterface {
 
     // Map each parameter in the constructor to its type.
     return constructor.parameters.map((param) =>
-      this.checker.getTypeAtLocation(param)
+      this.checker.getTypeAtLocation(param),
     )
   }
 
@@ -82,7 +82,7 @@ export class ClassProvider implements ProviderInterface {
 
     while (currentClass) {
       const constructor = currentClass.members.find(
-        ts.isConstructorDeclaration
+        ts.isConstructorDeclaration,
       ) as ts.ConstructorDeclaration | undefined
       if (constructor) {
         return constructor
@@ -99,10 +99,10 @@ export class ClassProvider implements ProviderInterface {
   }
 
   private findSuperClass(
-    classDeclaration: ts.ClassDeclaration
+    classDeclaration: ts.ClassDeclaration,
   ): ts.ClassDeclaration | null {
     const heritageClause = classDeclaration.heritageClauses?.find(
-      (h) => h.token === ts.SyntaxKind.ExtendsKeyword
+      (h) => h.token === ts.SyntaxKind.ExtendsKeyword,
     )
     if (!heritageClause || heritageClause.types.length === 0) {
       return null
@@ -115,7 +115,7 @@ export class ClassProvider implements ProviderInterface {
 
     const declarations = type.symbol.declarations
     const classDecl = declarations?.find(
-      (decl) => decl.kind === ts.SyntaxKind.ClassDeclaration
+      (decl) => decl.kind === ts.SyntaxKind.ClassDeclaration,
     ) as ts.ClassDeclaration | undefined
 
     return classDecl || null
@@ -133,7 +133,7 @@ export function isAliasType(type: ts.Type): type is AliasType {
 export class FunctionProvider implements ProviderInterface {
   constructor(
     protected declaration: ts.FunctionDeclaration,
-    protected checker: WireTypeChecker
+    protected checker: WireTypeChecker,
   ) {}
 
   node(): ts.Node {
@@ -146,7 +146,7 @@ export class FunctionProvider implements ProviderInterface {
 
   get isAsync(): boolean {
     return !!this.declaration.modifiers?.some(
-      (mod) => mod.kind === ts.SyntaxKind.AsyncKeyword
+      (mod) => mod.kind === ts.SyntaxKind.AsyncKeyword,
     )
   }
 
@@ -368,7 +368,7 @@ export class Resolver {
         providerDeclarations.push(new ClassProvider(expression, checker))
       } else if (ts.isFunctionDeclaration(expression)) {
         const isExported = expression.modifiers?.some(
-          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
+          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
         )
 
         if (!isExported) {
@@ -413,7 +413,7 @@ export class Resolver {
 
   public linearizeProvidersForReturnType(
     providers: ProviderInterface[],
-    returnType: ts.Type
+    returnType: ts.Type,
   ): ProviderInterface[] {
     const providerMap: Map<ts.Type, ProviderInterface> = new Map()
 
@@ -455,7 +455,7 @@ export class Resolver {
   public generateInitFunction(
     outputModuleFile: string,
     providers: ProviderInterface[],
-    targetType: ts.Type
+    targetType: ts.Type,
   ): string {
     const typeToVariableNameMap: Map<string, string> = new Map()
     const importStatements: string[] = []
@@ -488,11 +488,11 @@ export class Resolver {
 
       const importPath = relativeImportPath(
         outputModuleFile,
-        declarationFileName
+        declarationFileName,
       )
 
       importStatements.push(
-        `import { ${providerTypeName} } from "${importPath}";`
+        `import { ${providerTypeName} } from "${importPath}";`,
       )
 
       // Construct the call to the provider function or class construction, including passing the required parameters.
@@ -507,15 +507,15 @@ export class Resolver {
       if (provider instanceof FunctionProvider) {
         const call = provider.isAsync
           ? `  const ${uniqueName} = await ${providerTypeName}(${params.join(
-              ", "
+              ", ",
             )});`
           : `  const ${uniqueName} = ${providerTypeName}(${params.join(", ")});`
         providerCalls.push(call)
       } else if (provider instanceof ClassProvider) {
         providerCalls.push(
           `  const ${uniqueName} = new ${providerTypeName}(${params.join(
-            ", "
-          )});`
+            ", ",
+          )});`,
         )
       }
     }
@@ -526,12 +526,12 @@ export class Resolver {
     const body = providerCalls.join("\n")
     const returnVariableName =
       typeToVariableNameMap.get(
-        targetType.getSymbol()?.getEscapedName().toString() || ""
+        targetType.getSymbol()?.getEscapedName().toString() || "",
       ) || ""
     const returnStatement = `return ${returnVariableName};`
 
     const asyncKeyword = providers.some(
-      (provider) => provider instanceof FunctionProvider && provider.isAsync
+      (provider) => provider instanceof FunctionProvider && provider.isAsync,
     )
       ? "async "
       : ""
@@ -548,7 +548,7 @@ export class Initializer {
     private context: InjectionAnalyzer,
     public declaration: ts.FunctionDeclaration,
     // public signature: ts.Signature,
-    public providersEntry: ts.Expression
+    public providersEntry: ts.Expression,
   ) {
     this.resolver = new Resolver(this.providersEntry, this.context.checker)
   }
@@ -572,7 +572,7 @@ export class Initializer {
   public linearizedProviders(): ProviderInterface[] {
     return this.resolver.linearizeProvidersForReturnType(
       this.providers(),
-      this.returnType
+      this.returnType,
     )
   }
 
