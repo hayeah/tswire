@@ -1,102 +1,19 @@
 import { describe, expect, test, beforeAll, beforeEach } from "bun:test"
 import {
-  FunctionProvider,
   Initializer,
   InjectionAnalyzer,
-  isAliasType,
   relativeImportPath,
+  typeName,
+  type ProviderInterface,
 } from "./wire"
 import * as path from "path"
-import type ts from "typescript"
 
-// // Set the path to the file containing the providers
-// const providersFilePath = path.join(__dirname, "tests/providers.ts")
-// // Create an instance of the analyzer
-// const analyzer = new InjectionAnalyzer(providersFilePath)
+import fs from "fs"
 
-// // Initialize variables to be used before all tests
-// let initializers: Initializer[]
-// let initializer: Initializer
-
-// beforeAll(() => {
-//   // Find all initializers defined in the provided file
-//   initializers = analyzer.findInitializers()
-//   initializer = initializers[0]
-// })
-
-// // Test for correct detection of initializers and their return types
-// test("Injection Analyzer - Initializer Detection and Return Type", () => {
-//   const initializersInfo = initializers.map((init) => {
-//     return {
-//       name: init.name,
-//       returnType: analyzer.checker.typeToString(init.returnType),
-//     }
-//   })
-
-//   const expectedInitializers = [
-//     { name: "initWithArrayValue", returnType: "Baz" },
-//     { name: "initWithReference", returnType: "Baz" },
-//     { name: "initWithImportedProviders", returnType: "ModuleFoo" },
-//     { name: "initWithAsyncProviders", returnType: "Foo" },
-//   ]
-
-//   expect(initializersInfo).toEqual(expectedInitializers)
-// })
-
-// // Test collection and linearization of providers
-// test("Resolvers - Collect & Linearize Providers", () => {
-//   const initializer = initializers[0]
-//   const providers = initializer.providers()
-
-//   const resolvedProviderNames = providers
-//     .map((provider) => provider.outputType().symbol.name)
-//     .sort()
-
-//   const expectedProviderNames = [
-//     "Bar",
-//     "Baz",
-//     "Foo",
-//     "FooClass",
-//     "NotUsed",
-//   ].sort()
-
-//   expect(resolvedProviderNames).toEqual(expectedProviderNames)
-// })
-
-// // Test linearization of providers for a given return type
-// test("Resolvers - Linearize Providers", () => {
-//   const lproviders = initializer.linearizedProviders()
-
-//   const resolvedProviderNames = lproviders.map(
-//     (provider) => provider.outputType().symbol.name
-//   )
-
-//   const expectedProviderNames = ["Foo", "Bar", "FooClass", "Baz"]
-//   expect(resolvedProviderNames).toEqual(expectedProviderNames)
-// })
-
-// // Test generation of initialization code
-// test("Resolvers - Generate Initialization Code", () => {
-//   const initCode = initializer.initializationCode()
-
-//   const expectedCode = `
-// import { provideFoo } from "./tests/providers";
-// import { provideBar } from "./tests/providers";
-// import { FooClass } from "./tests/providers";
-// import { provideBaz } from "./tests/providers";
-
-// export async function init() {
-//   const foo = provideFoo();
-//   const bar = await provideBar(foo);
-//   const fooclass = new FooClass(bar);
-//   const baz = provideBaz(foo, bar, fooclass);
-//   return baz;
-// }`.trim()
-
-//   console.log(initCode)
-
-//   expect(initCode).toEqual(expectedCode)
-// })
+function analyzerForFile(filePath: string): InjectionAnalyzer {
+  const providersFilePath = path.join(__dirname, filePath)
+  return new InjectionAnalyzer(providersFilePath)
+}
 
 test("relativeImportPath", () => {
   const importPath = relativeImportPath(
@@ -106,74 +23,92 @@ test("relativeImportPath", () => {
   expect(importPath).toEqual("./type_aliasing")
 })
 
-describe("type alias", () => {
-  const providersFilePath = path.join(__dirname, "tests/type_aliasing.ts")
-  const analyzer = new InjectionAnalyzer(providersFilePath)
-  const initializer = analyzer.findInitializers()[0]
+describe("code generation", () => {
+  const glob = new Bun.Glob("./tests/*.ts")
 
-  test("provider output type", () => {
-    const code = initializer.initializationCode()
-    console.log(code)
-
-    return
-
-    const provider = initializer.providers()[0] as FunctionProvider
-
-    // const otype = provider.outputType()
-    // console.log(provider)
-    // otype.aliasSymbol
-    // otype.getApparentProperties
-    // otype.getBaseTypes
-    // otype.flags
-
-    const lps = initializer.linearizedProviders()
-
-    // provider.typeReferenceDeclaration()
-
-    // otype provider.outputType()
-
-    function typeName(type: ts.Type): string {
-      if (isAliasType(type)) {
-        return type.tswireTypeAliasSymbol.name
-      }
-
-      if (type.symbol) {
-        return type.symbol.name
-      }
-
-      if ("intrinsicName" in type) {
-        return type.intrinsicName as string
-      }
-
-      return ""
+  for (let file of glob.scanSync()) {
+    if (file.endsWith("_gen.ts") || file.startsWith("_")) {
+      continue
     }
 
-    lps.map((lp) => {
-      const otype = lp.outputType()
+    test(file, () => {
+      const originalFilePath = file
+      const generatedFilePath = file.replace(".ts", "_gen.ts")
 
-      console.log(lp.exportName())
-      console.log(typeName(otype))
-      // console.log(otype.aliasSymbol?.name)
-      // console.log((otype as any).tswireTypeAliasSymbol?.name)
+      const analyzer = analyzerForFile(originalFilePath)
+      const generatedCode = analyzer.code() // Get generated code from the analyzer
+      const expectedCode = fs.readFileSync(generatedFilePath, "utf8") // Read expected generated code
 
-      // otype.aliasSymbol
-
-      // TODO
-      //
-      // 1. should i just assign it to aliasSymbol?
-      // 2. check if the symbol is set for a non-intrinsic type
-
-      // otype.symbol
-
-      // if (isAliasType(otype)) {
-      //   console.log(otype.tswireTypeAliasSymbol)
-      // }
-
-      // console.log(isAliasType(otype) ? otype.tswireTypeAliasSymbol.name ? otype.intrin)
+      expect(generatedCode).toEqual(expectedCode)
     })
+  }
+})
+
+class TestContext {
+  public analyzer: InjectionAnalyzer
+  constructor(file: string) {
+    const rootFile = path.join(__dirname, file)
+    this.analyzer = new InjectionAnalyzer(rootFile)
+  }
+  get initializers(): Initializer[] {
+    return this.analyzer.findInitializers()
+  }
+
+  get initializer(): Initializer {
+    return this.initializers[0]
+  }
+
+  get providers(): ProviderInterface[] {
+    return this.initializer.providers()
+  }
+
+  get linearizedProviders(): ProviderInterface[] {
+    return this.initializer.linearizedProviders()
+  }
+}
+
+describe("basic tests", () => {
+  const context = new TestContext("tests/mixed.ts")
+
+  test("Injection Analyzer - Initializer Detection and Return Type", () => {
+    const { initializers } = context
+    const initializersInfo = initializers.map((init) => {
+      return {
+        name: init.name,
+        returnType: typeName(init.returnType),
+      }
+    })
+
+    const expectedInitializers = [
+      { name: "initBaz", returnType: "Baz" },
+      { name: "initFoo", returnType: "Foo" },
+    ]
+
+    expect(initializersInfo).toEqual(expectedInitializers)
   })
 
-  // beforeEach(() => {
-  //   console.log("foo foo")
-  // })
+  // Test collection and linearization of providers
+  test("Resolvers - Collect & Linearize Providers", () => {
+    const { providers } = context
+
+    const resolvedProviderNames = providers
+      .map((provider) => typeName(provider.outputType()))
+      .sort()
+
+    const expectedProviderNames = ["Bar", "Baz", "Foo", "FooClass"].sort()
+
+    expect(resolvedProviderNames).toEqual(expectedProviderNames)
+  })
+
+  // // Test linearization of providers for a given return type
+  test("Resolvers - Linearize Providers", () => {
+    const { linearizedProviders } = context
+
+    const resolvedProviderNames = linearizedProviders.map((provider) =>
+      typeName(provider.outputType())
+    )
+
+    const expectedProviderNames = ["Foo", "Bar", "FooClass", "Baz"]
+    expect(resolvedProviderNames).toEqual(expectedProviderNames)
+  })
 })

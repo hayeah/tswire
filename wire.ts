@@ -36,7 +36,7 @@ export function relativeImportPath(
   return importPath
 }
 
-interface ProviderInterface {
+export interface ProviderInterface {
   node(): ts.Node
 
   exportName(): string
@@ -280,7 +280,7 @@ function monkeyPatchTypeChecker(checker: ts.TypeChecker): WireTypeChecker {
   return wc
 }
 
-function typeName(type: ts.Type): string {
+export function typeName(type: ts.Type): string {
   if (isAliasType(type)) {
     return type.tswireTypeAliasSymbol.name
   }
@@ -680,7 +680,7 @@ export class InjectionAnalyzer {
 
     const sourceFile = this.program.getSourceFile(this.rootFile)
     if (!sourceFile) {
-      throw new Error("source file not found")
+      throw new Error(`source file not found: ${this.rootFile}`)
     }
 
     ts.forEachChild(sourceFile, visit)
