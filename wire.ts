@@ -222,17 +222,28 @@ function monkeyPatchTypeChecker(checker: ts.TypeChecker): WireTypeChecker {
   // if applicable. It resolves to the same object instance for the same aliased
   // type symbol, to preserve mapping identity.
   wc.getTypeAtLocationWithAliasSymbol = function (node: ts.Node): ts.Type {
+    // getTypeAtLocation gives the resolved type for type aliases
     let type = checker.getTypeAtLocation(node)
 
     if (ts.isTypeReferenceNode(node)) {
       const symbol = checker.getSymbolAtLocation(node.typeName)!
 
-      // need to return the same wrapped ts.Type for this symbol
-
       if (!symbol) {
-        throw new Error("no declaration found for type alias")
+        throw new Error("symbol not found")
       }
 
+      const isIntrinsic = type.symbol == undefined
+
+      // idea: detect if the resolved type has a different symbol from the type
+      // name we are looking at right now, then it's a type alias.
+      const isTypeAlias = isIntrinsic || type.symbol != symbol
+
+      if (!isTypeAlias) {
+        return type
+      }
+
+      // need to return the same wrapped ts.Type for this symbol, so object
+      // identity works for using ts.Type as key in Map
       if (cache.has(symbol)) {
         return cache.get(symbol)!
       }
