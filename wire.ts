@@ -122,10 +122,18 @@ export class ClassProvider implements ProviderInterface {
   }
 }
 
+export interface AliasType extends ts.Type {
+  tswireTypeAliasSymbol: ts.Symbol
+}
+
+export function isAliasType(type: ts.Type): type is AliasType {
+  return "tswireTypeAliasSymbol" in type
+}
+
 export class FunctionProvider implements ProviderInterface {
   constructor(
     protected declaration: ts.FunctionDeclaration,
-    protected checker: ts.TypeChecker
+    protected checker: WireTypeChecker
   ) {}
 
   node(): ts.Node {
@@ -158,33 +166,37 @@ export class FunctionProvider implements ProviderInterface {
     throw new Error("No type argument found for Promise type")
   }
 
+  private _outputType?: ts.Type
   outputType(): ts.Type {
-    const signature = this.checker.getSignatureFromDeclaration(
-      this.declaration as ts.FunctionDeclaration
-    )
-
-    if (!signature) {
-      throw new Error("No signature found for provider function")
+    if (this._outputType) {
+      return this._outputType
     }
 
-    // this.checker.getTypeArguments(signature.getReturnType()!
+    this._outputType = this.checker.getTypeAtLocationWithAliasSymbol(
+      this.declaration.type!
+    )
+    return this._outputType
 
-    const returnType = signature.getReturnType()
-
-    return this.isAsync ? this.unwrapAsyncPromiseType(returnType) : returnType
+    // this.signature.getReturnType()
+    // const returnType = this.signature.getReturnType()
+    // return this.isAsync ? this.unwrapAsyncPromiseType(returnType) : returnType
   }
 
+  private _inputTypes?: ts.Type[]
   inputTypes(): ts.Type[] {
-    const signature = this.checker.getSignatureFromDeclaration(
-      this.declaration as ts.FunctionDeclaration
-    )
-    return signature
-      ? signature
-          .getParameters()
-          .map((param) =>
-            this.checker.getTypeAtLocation(param.valueDeclaration!)
-          )
-      : []
+    if (this._inputTypes) {
+      return this._inputTypes
+    }
+
+    this._inputTypes = this.declaration.parameters.map((param) => {
+      return this.checker.getTypeAtLocationWithAliasSymbol(param.type!)
+    })
+
+    // this._inputTypes = this.signature.getParameters().map((param) => {
+    //   return this.getTypeAtLocationWithAliasSymbol(param.type)
+    // })
+
+    return this._inputTypes
   }
 }
 
@@ -197,8 +209,70 @@ export class FunctionProvider implements ProviderInterface {
 // ensuring that all inputs for a given provider are available before it is invoked.
 type DependencyGraph = Map<ts.Type, Set<ts.Type>>
 
+interface WireTypeChecker extends ts.TypeChecker {
+  getTypeAtLocationWithAliasSymbol(node: ts.Node): ts.Type
+}
+
+function monkeyPatchTypeChecker(checker: ts.TypeChecker): WireTypeChecker {
+  const wc = Object.create(checker)
+
+  const cache = new Map<ts.Symbol, ts.Type>()
+
+  // getTypeAtLocationPreserveReference returns the type, with type alias symbol
+  // if applicable. It resolves to the same object instance for the same aliased
+  // type symbol, to preserve mapping identity.
+  wc.getTypeAtLocationWithAliasSymbol = function (node: ts.Node): ts.Type {
+    let type = checker.getTypeAtLocation(node)
+
+    if (ts.isTypeReferenceNode(node)) {
+      const symbol = checker.getSymbolAtLocation(node.typeName)!
+
+      // need to return the same wrapped ts.Type for this symbol
+
+      if (!symbol) {
+        throw new Error("no declaration found for type alias")
+      }
+
+      if (cache.has(symbol)) {
+        return cache.get(symbol)!
+      }
+
+      // Notes on the type returned by checker. No immediate type could be
+      // extracted from symbols, it seems. For a type alias, the checker always
+      // gives the resolved underlying type.
+      //
+      // const aliasDeclaration: ts.TypeAliasDeclaration =
+      //   symbol.declarations![0] as any
+      //   this.checker.getTypeAtLocation(aliasDeclaration.name) // TypeObject
+      //   number this.checker.getTypeFromTypeNode(node) // TypeObject number
+      //   this.checker.getTypeFromTypeNode(aliasDeclaration.type) // TypeObject
+      //   number this.checker.getTypeOfSymbol(symbol) // TypeObject error
+      //   this.checker.getDeclaredTypeOfSymbol(symbol) // TypeObject number
+
+      // the ts.Type interface in fact has aliasSymbol, but that doesn't seem to
+      // get populated for type aliases.
+      const aliasedType: AliasType = Object.create(type, {
+        tswireTypeAliasSymbol: {
+          value: symbol,
+          // writable: true,
+          // enumerable: true,
+          // configurable: true
+        },
+      })
+
+      cache.set(symbol, aliasedType)
+
+      type = aliasedType
+    }
+
+    return type
+  }
+
+  return wc
+}
+
 export class Resolver {
-  constructor(public entry: ts.Expression, public checker: ts.TypeChecker) {}
+  constructor(public entry: ts.Expression, public checker: WireTypeChecker) {}
 
   /**
    * Resolves and collects all provider declarations from a given expression.
@@ -333,7 +407,7 @@ export class Resolver {
       const provider = providerMap.get(dep)
 
       const symbol = dep.symbol
-      if ("intrinsicName" in dep) {
+      if ("intrinsicName" in dep && !("tswireTypeAliasSymbol" in dep)) {
         throw new Error(`intrinsic types not supported: ${dep.intrinsicName}`)
       }
 
@@ -447,13 +521,13 @@ export class Initializer {
   constructor(
     private context: InjectionAnalyzer,
     public declaration: ts.FunctionDeclaration,
-    public signature: ts.Signature,
+    // public signature: ts.Signature,
     public providersEntry: ts.Expression
   ) {
-    this.resolver = new Resolver(this.providersEntry, this.checker)
+    this.resolver = new Resolver(this.providersEntry, this.context.checker)
   }
 
-  get checker(): ts.TypeChecker {
+  get checker() {
     return this.context.checker
   }
 
@@ -462,7 +536,7 @@ export class Initializer {
   }
 
   get returnType(): ts.Type {
-    return this.signature.getReturnType()
+    return this.checker.getTypeAtLocationWithAliasSymbol(this.declaration.type!)
   }
 
   public providers(): ProviderInterface[] {
@@ -488,11 +562,11 @@ export class Initializer {
 
 export class InjectionAnalyzer {
   public program: ts.Program
-  public checker: ts.TypeChecker
+  public checker: WireTypeChecker
 
   constructor(public rootFile: string) {
     this.program = ts.createProgram([rootFile], { allowJs: true })
-    this.checker = this.program.getTypeChecker()
+    this.checker = monkeyPatchTypeChecker(this.program.getTypeChecker())
   }
 
   public findInitializers(): Initializer[] {
@@ -535,7 +609,7 @@ export class InjectionAnalyzer {
         firstStatement.expression.arguments.length == 1
       ) {
         const providers = firstStatement.expression.arguments[0]
-        return new Initializer(self, node, signature, providers)
+        return new Initializer(self, node, providers)
       }
     }
 
