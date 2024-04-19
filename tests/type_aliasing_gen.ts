@@ -1,5 +1,5 @@
-import { provideFoo } from "./tests/type_aliasing";
-import { provideBar } from "./tests/type_aliasing";
+import { provideFoo } from "./type_aliasing";
+import { provideBar } from "./type_aliasing";
 
 export function init() {
   const number = provideFoo();

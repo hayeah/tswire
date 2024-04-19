@@ -4,6 +4,7 @@ import {
   Initializer,
   InjectionAnalyzer,
   isAliasType,
+  relativeImportPath,
 } from "./wire"
 import * as path from "path"
 import type ts from "typescript"
@@ -96,6 +97,14 @@ import type ts from "typescript"
 
 //   expect(initCode).toEqual(expectedCode)
 // })
+
+test("relativeImportPath", () => {
+  const importPath = relativeImportPath(
+    "tests/type_aliasing_gen.ts",
+    "tests/type_aliasing.ts"
+  )
+  expect(importPath).toEqual("./type_aliasing")
+})
 
 describe("type alias", () => {
   const providersFilePath = path.join(__dirname, "tests/type_aliasing.ts")

@@ -16,7 +16,7 @@ function findSourceFile(node: ts.Node): ts.SourceFile {
   return current as ts.SourceFile
 }
 
-function relativeImportPath(
+export function relativeImportPath(
   outputModuleFile: string,
   declarationFileName: string
 ): string {
@@ -551,7 +551,7 @@ export class Initializer {
   }
 
   public initializationCode(): string {
-    const moduleFile = path.basename(this.context.rootFile)
+    const moduleFile = this.context.rootFile
     const providers = this.linearizedProviders()
 
     return this.resolver
