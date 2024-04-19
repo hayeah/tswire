@@ -271,6 +271,22 @@ function monkeyPatchTypeChecker(checker: ts.TypeChecker): WireTypeChecker {
   return wc
 }
 
+function typeName(type: ts.Type): string {
+  if (isAliasType(type)) {
+    return type.tswireTypeAliasSymbol.name
+  }
+
+  if (type.symbol) {
+    return type.symbol.name
+  }
+
+  if ("intrinsicName" in type) {
+    return type.intrinsicName as string
+  }
+
+  return ""
+}
+
 export class Resolver {
   constructor(public entry: ts.Expression, public checker: WireTypeChecker) {}
 
@@ -439,8 +455,9 @@ export class Resolver {
 
     for (let provider of providers) {
       const outputType: ts.Type = provider.outputType()
-      const returnType: string = this.checker.typeToString(outputType) // This gets the type as a string
-      const baseName: string = returnType.toLowerCase()
+
+      const outputTypeName: string = typeName(outputType)
+      const baseName: string = outputTypeName.toLowerCase()
       let uniqueName = baseName
       let counter = 1
       while (usedNames.has(uniqueName)) {
@@ -448,7 +465,7 @@ export class Resolver {
         counter++
       }
       usedNames.add(uniqueName)
-      typeToVariableNameMap.set(returnType, uniqueName)
+      typeToVariableNameMap.set(outputTypeName, uniqueName)
 
       const providerTypeName = provider.exportName()
 
@@ -471,7 +488,7 @@ export class Resolver {
 
       // Construct the call to the provider function or class construction, including passing the required parameters.
       const params: string[] = provider.inputTypes().map((type) => {
-        const paramType = this.checker.typeToString(type)
+        const paramType = typeName(type)
         if (!typeToVariableNameMap.has(paramType)) {
           throw new Error(`No provider found for type ${paramType}`)
         }
