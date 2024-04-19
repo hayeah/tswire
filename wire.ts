@@ -577,6 +577,25 @@ export class Initializer {
   }
 }
 
+// `wireOutputPath` generates a new file path with `_wire` appended to the
+// filename before the extension, using Node.js `path` module for handling file
+// paths. This approach is more robust and handles edge cases well, such as
+// files without extensions. `inputFilePath`: A string representing the path to
+// the input file. Returns a string representing the path to the output file
+// with `_wire` appended to the filename.
+function wireOutputPath(inputFilePath: string): string {
+  // Extract the directory, filename without extension, and extension from the input path.
+  const dirname = path.dirname(inputFilePath)
+  const extname = path.extname(inputFilePath)
+  const basename = path.basename(inputFilePath, extname)
+
+  // Append '_gen' to the basename, then reconstruct the path.
+  const outputFileName = `${basename}_gen${extname}`
+  const outputFilePath = path.join(dirname, outputFileName)
+
+  return outputFilePath
+}
+
 export class InjectionAnalyzer {
   public program: ts.Program
   public checker: WireTypeChecker
@@ -584,6 +603,19 @@ export class InjectionAnalyzer {
   constructor(public rootFile: string) {
     this.program = ts.createProgram([rootFile], { allowJs: true })
     this.checker = monkeyPatchTypeChecker(this.program.getTypeChecker())
+  }
+
+  public code(): string {
+    const inits = this.findInitializers()
+    const init = inits[0]
+    return init.initializationCode()
+  }
+
+  public async writeCode(outputFile?: string) {
+    if (!outputFile) {
+      outputFile = wireOutputPath(this.rootFile)
+    }
+    await Bun.write(outputFile, this.code())
   }
 
   public findInitializers(): Initializer[] {
