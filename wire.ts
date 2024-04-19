@@ -166,20 +166,18 @@ export class FunctionProvider implements ProviderInterface {
     throw new Error("No type argument found for Promise type")
   }
 
-  private _outputType?: ts.Type
   outputType(): ts.Type {
-    if (this._outputType) {
-      return this._outputType
+    let typeNode = this.declaration.type!
+
+    // if (type.getText().startsWith("Promise<")) {}
+    if (this.isAsync) {
+      // Expect this to be the case if isAsync is true
+      typeNode = (typeNode as ts.NodeWithTypeArguments).typeArguments![0]
     }
 
-    this._outputType = this.checker.getTypeAtLocationWithAliasSymbol(
-      this.declaration.type!
-    )
-    return this._outputType
-
-    // this.signature.getReturnType()
-    // const returnType = this.signature.getReturnType()
-    // return this.isAsync ? this.unwrapAsyncPromiseType(returnType) : returnType
+    // this.declaration.type.getText() // "Promise<Foo>"
+    // this.declaration.type.typeArguments[0].getText() // Foo
+    return this.checker.getTypeAtLocationWithAliasSymbol(typeNode)
   }
 
   private _inputTypes?: ts.Type[]
