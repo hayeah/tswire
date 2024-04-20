@@ -18,12 +18,11 @@ export function provideBar(foo: Foo): Bar {
   return { foo }
 }
 
-function init(): Bar {
-  tswire([provideBar, provideFoo])
-  return null as any
+export class Class {
+  constructor(public foo: Foo, public bar: Bar) {}
 }
 
-// function init(): Foo {
-//   return duration
-//   // return null as any
-// }
+function init(): Class {
+  tswire([Class, provideBar, provideFoo])
+  return null as any
+}

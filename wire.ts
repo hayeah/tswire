@@ -8,6 +8,93 @@ const nonInjectableReturnTypes =
   ts.TypeFlags.Undefined |
   ts.TypeFlags.Never
 
+// Initialize a Set of JavaScript keywords at the module scope
+const keywords = new Set([
+  "abstract",
+  "arguments",
+  "await",
+  "boolean",
+  "break",
+  "byte",
+  "case",
+  "catch",
+  "char",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "double",
+  "else",
+  "enum",
+  "eval",
+  "export",
+  "extends",
+  "false",
+  "final",
+  "finally",
+  "float",
+  "for",
+  "function",
+  "goto",
+  "if",
+  "implements",
+  "import",
+  "in",
+  "instanceof",
+  "int",
+  "interface",
+  "let",
+  "long",
+  "native",
+  "new",
+  "null",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "return",
+  "short",
+  "static",
+  "super",
+  "switch",
+  "synchronized",
+  "this",
+  "throw",
+  "throws",
+  "transient",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "volatile",
+  "while",
+  "with",
+  "yield",
+])
+
+function escapeKeyword(name: string): string {
+  // Check if the name is a keyword and prefix it with '$' if it is
+  if (keywords.has(name)) {
+    return `$${name}`
+  }
+
+  return name
+}
+
+function lowerFirstChar(str: string): string {
+  if (str.length === 0) return str // Check if the string is empty
+  return str.charAt(0).toLowerCase() + str.slice(1)
+}
+
+function variableNameForType(type: ts.Type): string {
+  // if a keyword, prefix it with "$"
+  return escapeKeyword(lowerFirstChar(typeName(type)))
+}
+
 function findSourceFile(node: ts.Node): ts.SourceFile {
   let current: ts.Node = node
   while (current && !ts.isSourceFile(current)) {
@@ -48,7 +135,7 @@ export interface ProviderInterface {
 export class ClassProvider implements ProviderInterface {
   constructor(
     protected declaration: ts.ClassDeclaration,
-    protected checker: ts.TypeChecker,
+    protected checker: WireTypeChecker,
   ) {}
 
   node(): ts.Node {
@@ -68,7 +155,7 @@ export class ClassProvider implements ProviderInterface {
 
     // Map each parameter in the constructor to its type.
     return constructor.parameters.map((param) =>
-      this.checker.getTypeAtLocation(param),
+      this.checker.getTypeAtLocationWithAliasSymbol(param.type!),
     )
   }
 
@@ -466,7 +553,7 @@ export class Resolver {
       const outputType: ts.Type = provider.outputType()
 
       const outputTypeName: string = typeName(outputType)
-      const baseName: string = outputTypeName.toLowerCase()
+      const baseName: string = variableNameForType(outputType)
       let uniqueName = baseName
       let counter = 1
       while (usedNames.has(uniqueName)) {
