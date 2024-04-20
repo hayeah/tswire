@@ -306,6 +306,9 @@ function monkeyPatchTypeChecker(checker: ts.TypeChecker): WireTypeChecker {
   // getTypeAtLocationPreserveReference returns the type, with type alias symbol
   // if applicable. It resolves to the same object instance for the same aliased
   // type symbol, to preserve mapping identity.
+  //
+  // This is necessary because there does not seem to be a way to get an
+  // intermedia ts.Type for the aliasing symbol.
   wc.getTypeAtLocationWithAliasSymbol = function (node: ts.Node): ts.Type {
     // getTypeAtLocation gives the resolved type for type aliases
     let type = checker.getTypeAtLocation(node)
