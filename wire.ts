@@ -1,80 +1,13 @@
 import * as ts from "typescript"
 import { topologicalSort } from "./topsort"
 import path from "path"
+import { keywords } from "./constants"
 
 const nonInjectableReturnTypes =
   ts.TypeFlags.Void |
   ts.TypeFlags.Any |
   ts.TypeFlags.Undefined |
   ts.TypeFlags.Never
-
-// Initialize a Set of JavaScript keywords at the module scope
-const keywords = new Set([
-  "abstract",
-  "arguments",
-  "await",
-  "boolean",
-  "break",
-  "byte",
-  "case",
-  "catch",
-  "char",
-  "class",
-  "const",
-  "continue",
-  "debugger",
-  "default",
-  "delete",
-  "do",
-  "double",
-  "else",
-  "enum",
-  "eval",
-  "export",
-  "extends",
-  "false",
-  "final",
-  "finally",
-  "float",
-  "for",
-  "function",
-  "goto",
-  "if",
-  "implements",
-  "import",
-  "in",
-  "instanceof",
-  "int",
-  "interface",
-  "let",
-  "long",
-  "native",
-  "new",
-  "null",
-  "package",
-  "private",
-  "protected",
-  "public",
-  "return",
-  "short",
-  "static",
-  "super",
-  "switch",
-  "synchronized",
-  "this",
-  "throw",
-  "throws",
-  "transient",
-  "true",
-  "try",
-  "typeof",
-  "var",
-  "void",
-  "volatile",
-  "while",
-  "with",
-  "yield",
-])
 
 function escapeKeyword(name: string): string {
   // Check if the name is a keyword and prefix it with '$' if it is
