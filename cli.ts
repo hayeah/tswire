@@ -9,6 +9,7 @@ program
   .action(async (files, options, command) => {
     for (let file of files) {
       try {
+        console.log(`tswire ${file}`)
         const analyzer = new InjectionAnalyzer(file)
         analyzer.writeCode()
       } catch (error) {
