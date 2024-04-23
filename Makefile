@@ -19,10 +19,11 @@ $(TARGET_DIR)/%_gen.ts: $(TARGET_DIR)/%.ts
 	bun cli.ts $<
 
 # Or, one-liner to do the same thing
-# find tests -maxdepth 1 -name "*.ts" ! -name "*_gen.ts" | xargs bun cli.ts
+fixtures:
+	find tests -maxdepth 1 -name "*.ts" ! -name "*_gen.ts" | xargs bun cli.ts
 
 # Clean task
 clean:
 	rm -f $(GEN_FILES)
 
-.PHONY: all clean
+.PHONY: all clean fixtures
