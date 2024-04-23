@@ -1,5 +1,4 @@
-import { provideFoo } from "./many_inits";
-import { provideBar } from "./many_inits";
+import { provideFoo, provideBar } from "./many_inits";
 
 export function initFoo() {
   const foo = provideFoo();

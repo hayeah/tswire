@@ -1,7 +1,4 @@
-import { provideFoo } from "./mixed";
-import { provideBar } from "./mixed";
-import { FooClass } from "./mixed";
-import { provideBaz } from "./mixed";
+import { provideFoo, provideBar, FooClass, provideBaz } from "./mixed";
 
 export function initBaz() {
   const foo = provideFoo();

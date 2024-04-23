@@ -603,27 +603,35 @@ export class InjectionAnalyzer {
 
   public code(): string {
     const inits = this.findInitializers()
-    const imports = new Set<string>()
-    const functions = []
+    // Adjust imports to consolidate by file
+    const importsMap: Map<string, Set<string>> = new Map() // Map from file paths to sets of imported providers
+    const functions: string[] = []
 
     // Collect all necessary imports and function bodies from initializers
     for (const init of inits) {
-      const { importStatements, functionBody } = this.generateInitFunction(init)
-      importStatements.forEach((imp) => imports.add(imp))
+      const { functionBody } = this.generateInitFunction(init, importsMap)
       functions.push(functionBody)
     }
 
+    // Generate the combined import statements
+    const imports = Array.from(
+      importsMap,
+      ([path, names]) =>
+        `import { ${Array.from(names).join(", ")} } from "${path}";`,
+    ).join("\n")
+
     // Combine all parts into one output
-    return Array.from(imports).join("\n") + "\n\n" + functions.join("\n\n")
+    return `${imports}\n\n${functions.join("\n\n")}`
   }
 
-  private generateInitFunction(init: Initializer): {
-    importStatements: Set<string>
+  private generateInitFunction(
+    init: Initializer,
+    importStatements: Map<string, Set<string>>,
+  ): {
     functionBody: string
   } {
     const providers = init.linearizedProviders()
     const typeToVariableNameMap = new Map<string, string>()
-    const importStatements = new Set<string>()
     const providerCalls = []
     const usedNames = new Set<string>() // Tracks used names to avoid collisions
 
@@ -643,9 +651,12 @@ export class InjectionAnalyzer {
       const providerTypeName = provider.exportName()
       const declarationFileName = findSourceFile(provider.node()).fileName
       const importPath = relativeImportPath(this.rootFile, declarationFileName)
-      importStatements.add(
-        `import { ${providerTypeName} } from "${importPath}";`,
-      )
+      let importNames = importStatements.get(importPath)
+      if (!importNames) {
+        importNames = new Set<string>()
+        importStatements.set(importPath, importNames)
+      }
+      importNames.add(providerTypeName)
 
       // Construct the call to the provider function or class construction, including passing the required parameters.
       const params: string[] = provider.inputTypes().map((type) => {
@@ -683,6 +694,6 @@ export class InjectionAnalyzer {
       init.name
     }() {\n${providerCalls.join("\n")}\n  return ${returnVariableName};\n}`
 
-    return { importStatements, functionBody }
+    return { functionBody }
   }
 }
