@@ -3,6 +3,6 @@ import { BarClass } from "./class";
 
 export function init() {
   const foo = provideFoo();
-  const barclass = new BarClass(foo);
-  return barclass;
+  const barClass = new BarClass(foo);
+  return barClass;
 }
