@@ -467,101 +467,6 @@ export class Resolver {
 
     return linearizedProviders
   }
-
-  // `generateInitFunction` constructs the TypeScript code for an initialization function
-  // that uses the sorted providers to satisfy dependencies for a target type.
-  // The function constructs the required import statements dynamically to avoid naming conflicts
-  // and ensure that only necessary provider functions are imported and used.
-  // `providers`: An array of FunctionDeclaration objects representing the sorted providers.
-  // `targetType`: The Type object representing the type we aim to construct.
-  // Returns a string containing the TypeScript code for the initialization function and necessary imports.
-  public generateInitFunction(
-    outputModuleFile: string,
-    providers: ProviderInterface[],
-    targetType: ts.Type,
-  ): string {
-    const typeToVariableNameMap: Map<string, string> = new Map()
-    const importStatements: string[] = []
-    const providerCalls: string[] = []
-    const usedNames: Set<string> = new Set() // Tracks used names to avoid collisions.
-
-    for (let provider of providers) {
-      const outputType: ts.Type = provider.outputType()
-
-      const outputTypeName: string = typeName(outputType)
-      const baseName: string = variableNameForType(outputType)
-      let uniqueName = baseName
-      let counter = 1
-      while (usedNames.has(uniqueName)) {
-        uniqueName = `${baseName}${counter}`
-        counter++
-      }
-      usedNames.add(uniqueName)
-      typeToVariableNameMap.set(outputTypeName, uniqueName)
-
-      const providerTypeName = provider.exportName()
-
-      // Generate import statement for the provider.
-      // const importName = usedNames.has(providerTypeName)
-      //   ? `${providerTypeName} as ${providerTypeName}Instance`
-      //   : providerTypeName
-
-      // fully qualified file path name
-      const declarationFileName = findSourceFile(provider.node()).fileName
-
-      const importPath = relativeImportPath(
-        outputModuleFile,
-        declarationFileName,
-      )
-
-      importStatements.push(
-        `import { ${providerTypeName} } from "${importPath}";`,
-      )
-
-      // Construct the call to the provider function or class construction, including passing the required parameters.
-      const params: string[] = provider.inputTypes().map((type) => {
-        const paramType = typeName(type)
-        if (!typeToVariableNameMap.has(paramType)) {
-          throw new Error(`No provider found for type ${paramType}`)
-        }
-        return typeToVariableNameMap.get(paramType)!
-      })
-
-      if (provider instanceof FunctionProvider) {
-        const call = provider.isAsync
-          ? `  const ${uniqueName} = await ${providerTypeName}(${params.join(
-              ", ",
-            )});`
-          : `  const ${uniqueName} = ${providerTypeName}(${params.join(", ")});`
-        providerCalls.push(call)
-      } else if (provider instanceof ClassProvider) {
-        providerCalls.push(
-          `  const ${uniqueName} = new ${providerTypeName}(${params.join(
-            ", ",
-          )});`,
-        )
-      }
-    }
-
-    const targetTypeSymbol = targetType.getSymbol()
-    const targetTypeName = targetTypeSymbol ? targetTypeSymbol.getName() : ""
-    const imports = importStatements.join("\n")
-    const body = providerCalls.join("\n")
-    const returnVariableName =
-      typeToVariableNameMap.get(
-        targetType.getSymbol()?.getEscapedName().toString() || "",
-      ) || ""
-    const returnStatement = `return ${returnVariableName};`
-
-    const asyncKeyword = providers.some(
-      (provider) => provider instanceof FunctionProvider && provider.isAsync,
-    )
-      ? "async "
-      : ""
-
-    const output = `${imports}\n\nexport ${asyncKeyword}function init() {\n${body}\n  ${returnStatement}\n}`
-    return output
-  }
 }
 
 export class Initializer {
@@ -598,15 +503,6 @@ export class Initializer {
       this.returnType,
     )
   }
-
-  public initializationCode(): string {
-    const moduleFile = this.context.rootFile
-    const providers = this.linearizedProviders()
-
-    return this.resolver
-      .generateInitFunction(moduleFile, providers, this.returnType)
-      .trim()
-  }
 }
 
 // `wireOutputPath` generates a new file path with `_wire` appended to the
@@ -635,12 +531,6 @@ export class InjectionAnalyzer {
   constructor(public rootFile: string) {
     this.program = ts.createProgram([rootFile], { allowJs: true })
     this.checker = monkeyPatchTypeChecker(this.program.getTypeChecker())
-  }
-
-  public code(): string {
-    const inits = this.findInitializers()
-    const init = inits[0]
-    return init.initializationCode()
   }
 
   public async writeCode(outputFile?: string) {
@@ -709,5 +599,101 @@ export class InjectionAnalyzer {
     ts.forEachChild(sourceFile, visit)
 
     return inits
+  }
+
+  public code(): string {
+    const inits = this.findInitializers()
+    // Adjust imports to consolidate by file
+    const importsMap: Map<string, Set<string>> = new Map() // Map from file paths to sets of imported providers
+    const functions: string[] = []
+
+    // Collect all necessary imports and function bodies from initializers
+    for (const init of inits) {
+      const { functionBody } = this.generateInitFunction(init, importsMap)
+      functions.push(functionBody)
+    }
+
+    // Generate the combined import statements
+    const imports = Array.from(
+      importsMap,
+      ([path, names]) =>
+        `import { ${Array.from(names).join(", ")} } from "${path}";`,
+    ).join("\n")
+
+    // Combine all parts into one output
+    return `${imports}\n\n${functions.join("\n\n")}`
+  }
+
+  private generateInitFunction(
+    init: Initializer,
+    importStatements: Map<string, Set<string>>,
+  ): {
+    functionBody: string
+  } {
+    const providers = init.linearizedProviders()
+    const typeToVariableNameMap = new Map<string, string>()
+    const providerCalls = []
+    const usedNames = new Set<string>() // Tracks used names to avoid collisions
+
+    for (let provider of providers) {
+      const outputType = provider.outputType()
+      const outputTypeName = typeName(outputType)
+      const baseName = variableNameForType(outputType)
+      let uniqueName = baseName
+      let counter = 1
+      while (usedNames.has(uniqueName)) {
+        uniqueName = `${baseName}${counter}`
+        counter++
+      }
+      usedNames.add(uniqueName)
+      typeToVariableNameMap.set(outputTypeName, uniqueName)
+
+      const providerTypeName = provider.exportName()
+      const declarationFileName = findSourceFile(provider.node()).fileName
+      const importPath = relativeImportPath(this.rootFile, declarationFileName)
+      let importNames = importStatements.get(importPath)
+      if (!importNames) {
+        importNames = new Set<string>()
+        importStatements.set(importPath, importNames)
+      }
+      importNames.add(providerTypeName)
+
+      // Construct the call to the provider function or class construction, including passing the required parameters.
+      const params: string[] = provider.inputTypes().map((type) => {
+        const paramType = typeName(type)
+        if (!typeToVariableNameMap.has(paramType)) {
+          throw new Error(`No provider found for type ${paramType}`)
+        }
+        return typeToVariableNameMap.get(paramType)!
+      })
+
+      if (provider instanceof FunctionProvider) {
+        const call = provider.isAsync
+          ? `  const ${uniqueName} = await ${providerTypeName}(${params.join(
+              ", ",
+            )});`
+          : `  const ${uniqueName} = ${providerTypeName}(${params.join(", ")});`
+        providerCalls.push(call)
+      } else if (provider instanceof ClassProvider) {
+        providerCalls.push(
+          `  const ${uniqueName} = new ${providerTypeName}(${params.join(
+            ", ",
+          )});`,
+        )
+      }
+    }
+
+    const targetTypeName = init.returnType.getSymbol()?.getName() || ""
+    const returnVariableName = typeToVariableNameMap.get(targetTypeName) || ""
+    const asyncKeyword = providers.some(
+      (provider) => provider instanceof FunctionProvider && provider.isAsync,
+    )
+      ? "async "
+      : ""
+    const functionBody = `export ${asyncKeyword}function ${
+      init.name
+    }() {\n${providerCalls.join("\n")}\n  return ${returnVariableName};\n}`
+
+    return { functionBody }
   }
 }

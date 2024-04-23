@@ -1,6 +1,4 @@
-import { provideFoo } from "./type_aliasing";
-import { provideBar } from "./type_aliasing";
-import { Class } from "./type_aliasing";
+import { provideFoo, provideBar, Class } from "./type_aliasing";
 
 export function init() {
   const foo = provideFoo();
