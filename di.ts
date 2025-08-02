@@ -6,12 +6,33 @@ import * as ts from "typescript";
 import type { WireTypeChecker } from "./types";
 import { monkeyPatchTypeChecker } from "./utils";
 
+let cachedProgram: ts.Program | undefined;
+let cachedChecker: WireTypeChecker | undefined;
+
 export function provideProgram(c: Config): ts.Program {
-  return ts.createProgram([c.rootFile], { allowJs: true });
+  if (cachedProgram?.getRootFileNames().includes(c.rootFile)) {
+    return cachedProgram;
+  }
+
+  const rootNames = new Set([
+    ...(cachedProgram?.getRootFileNames() ?? []),
+    c.rootFile,
+  ]);
+
+  cachedProgram = ts.createProgram({
+    rootNames: [...rootNames],
+    options: { allowJs: true, incremental: true },
+    oldProgram: cachedProgram,
+  });
+
+  cachedChecker = undefined; // force rebuild on next call
+  return cachedProgram;
 }
 
 export function provideWireTypeChecker(p: ts.Program): WireTypeChecker {
-  return monkeyPatchTypeChecker(p.getTypeChecker());
+  if (cachedChecker && p === cachedProgram) return cachedChecker;
+  cachedChecker = monkeyPatchTypeChecker(p.getTypeChecker());
+  return cachedChecker;
 }
 
 import { InjectionAnalyzer } from "./InjectionAnalyzer";

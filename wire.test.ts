@@ -22,12 +22,23 @@ test("relativeImportPath", () => {
 
 describe("code generation", () => {
   const glob = new Bun.Glob("./tests/*.ts");
-
+  
+  // Collect all test files first
+  const testFiles: string[] = [];
   for (const file of glob.scanSync()) {
     if (file.endsWith("_gen.ts") || file.startsWith("_")) {
       continue;
     }
+    testFiles.push(file);
+  }
 
+  // Pre-initialize analyzers for all files to warm up the cache
+  for (const file of testFiles) {
+    analyzerForFile(file);
+  }
+
+  // Run the actual tests
+  for (const file of testFiles) {
     test(file, () => {
       const originalFilePath = file;
       const generatedFilePath = file.replace(".ts", "_gen.ts");
