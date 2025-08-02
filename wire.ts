@@ -87,9 +87,23 @@ export class ClassProvider implements ProviderInterface {
     }
 
     // Map each parameter in the constructor to its type.
-    return constructor.parameters.map((param) =>
-      this.checker.getTypeAtLocationWithAliasSymbol(param.type!),
-    )
+    return constructor.parameters.map((param, index) => {
+      if (!param.type) {
+        const sourceFile = findSourceFile(this.declaration)
+        const { line, character } = ts.getLineAndCharacterOfPosition(
+          sourceFile,
+          param.getStart(),
+        )
+        const className = this.declaration.name?.getText() || "<anonymous>"
+        const paramName = param.name?.getText() || `parameter ${index + 1}`
+        throw new Error(
+          `tswire: parameter "${paramName}" of class "${className}" constructor at ${
+            sourceFile.fileName
+          }:${line + 1}:${character + 1} must have an explicit type annotation`,
+        )
+      }
+      return this.checker.getTypeAtLocationWithAliasSymbol(param.type)
+    })
   }
 
   outputType(): ts.Type {
@@ -154,7 +168,21 @@ export class FunctionProvider implements ProviderInterface {
   constructor(
     protected declaration: ts.FunctionDeclaration,
     protected checker: WireTypeChecker,
-  ) {}
+  ) {
+    if (!declaration.type) {
+      const sourceFile = findSourceFile(declaration)
+      const { line, character } = ts.getLineAndCharacterOfPosition(
+        sourceFile,
+        declaration.getStart(),
+      )
+      const name = declaration.name?.getText() || "<anonymous>"
+      throw new Error(
+        `tswire: provider "${name}" at ${sourceFile.fileName}:${line + 1}:${
+          character + 1
+        } must declare an explicit return-type annotation`,
+      )
+    }
+  }
 
   node(): ts.Node {
     return this.declaration
@@ -187,7 +215,21 @@ export class FunctionProvider implements ProviderInterface {
   }
 
   outputType(): ts.Type {
-    let typeNode = this.declaration.type!
+    if (!this.declaration.type) {
+      const sourceFile = findSourceFile(this.declaration)
+      const { line, character } = ts.getLineAndCharacterOfPosition(
+        sourceFile,
+        this.declaration.getStart(),
+      )
+      const name = this.declaration.name?.getText() || "<anonymous>"
+      throw new Error(
+        `tswire: provider "${name}" at ${sourceFile.fileName}:${line + 1}:${
+          character + 1
+        } must declare an explicit return-type annotation`,
+      )
+    }
+
+    let typeNode = this.declaration.type
 
     // if (type.getText().startsWith("Promise<")) {}
     if (this.isAsync) {
@@ -206,8 +248,22 @@ export class FunctionProvider implements ProviderInterface {
       return this._inputTypes
     }
 
-    this._inputTypes = this.declaration.parameters.map((param) => {
-      return this.checker.getTypeAtLocationWithAliasSymbol(param.type!)
+    this._inputTypes = this.declaration.parameters.map((param, index) => {
+      if (!param.type) {
+        const sourceFile = findSourceFile(this.declaration)
+        const { line, character } = ts.getLineAndCharacterOfPosition(
+          sourceFile,
+          param.getStart(),
+        )
+        const functionName = this.declaration.name?.getText() || "<anonymous>"
+        const paramName = param.name?.getText() || `parameter ${index + 1}`
+        throw new Error(
+          `tswire: parameter "${paramName}" of provider "${functionName}" at ${
+            sourceFile.fileName
+          }:${line + 1}:${character + 1} must have an explicit type annotation`,
+        )
+      }
+      return this.checker.getTypeAtLocationWithAliasSymbol(param.type)
     })
 
     // this._inputTypes = this.signature.getParameters().map((param) => {
@@ -320,7 +376,10 @@ export function typeName(type: ts.Type): string {
 }
 
 export class Resolver {
-  constructor(public entry: ts.Expression, public checker: WireTypeChecker) {}
+  constructor(
+    public entry: ts.Expression,
+    public checker: WireTypeChecker,
+  ) {}
 
   /**
    * Resolves and collects all provider declarations from a given expression.
@@ -331,6 +390,7 @@ export class Resolver {
   public collectProviders(arg: ts.Expression): ProviderInterface[] {
     const providerDeclarations: ProviderInterface[] = []
     const checker = this.checker
+    const sourceFile = findSourceFile(arg)
 
     function processExpression(expression: ts.Node): void {
       if (ts.isPropertyAccessExpression(expression)) {
@@ -398,7 +458,40 @@ export class Resolver {
           throw new Error("Provider function must be exported")
         }
 
+        // Check for explicit return type annotation
+        if (!expression.type) {
+          const { line, character } = ts.getLineAndCharacterOfPosition(
+            sourceFile,
+            expression.getStart(),
+          )
+          const name = expression.name?.getText() || "<anonymous>"
+          throw new Error(
+            `tswire: provider "${name}" at ${sourceFile.fileName}:${line + 1}:${
+              character + 1
+            } must declare an explicit return-type annotation`,
+          )
+        }
+
         providerDeclarations.push(new FunctionProvider(expression, checker))
+      } else if (
+        ts.isArrowFunction(expression) ||
+        ts.isFunctionExpression(expression) ||
+        ts.isMethodDeclaration(expression)
+      ) {
+        const { line, character } = ts.getLineAndCharacterOfPosition(
+          sourceFile,
+          expression.getStart(),
+        )
+        const name = expression
+          .getText(sourceFile)
+          .slice(0, 40)
+          .replace(/\s+/g, " ")
+        throw new Error(
+          `tswire: provider starting with "${name}..." at ${sourceFile.fileName}:${
+            line + 1
+          }:${character + 1} must be a function or class declaration, ` +
+            `not a variable, arrow function, or import reference`,
+        )
       }
     }
 
