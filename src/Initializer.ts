@@ -1,5 +1,5 @@
 import type * as ts from "typescript";
-import { InitArgProvider } from "./InitArgProvider";
+import { InitArgProvider } from "./providers/InitArgProvider";
 import { Resolver } from "./Resolver";
 import type { ProviderInterface, WireTypeChecker } from "./types";
 

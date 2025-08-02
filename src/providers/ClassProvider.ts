@@ -1,6 +1,6 @@
 import * as ts from "typescript";
-import type { ProviderInterface, WireTypeChecker } from "./types";
-import { findSourceFile } from "./utils";
+import type { ProviderInterface, WireTypeChecker } from "../types";
+import { findSourceFile } from "../utils";
 
 export class ClassProvider implements ProviderInterface {
   constructor(

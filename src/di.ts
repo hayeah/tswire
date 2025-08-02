@@ -38,7 +38,7 @@ export function provideWireTypeChecker(p: ts.Program): WireTypeChecker {
 import { InjectionAnalyzer } from "./InjectionAnalyzer";
 import { tswire } from "./index";
 
-export function initAnalyzer(cfg: Config): InjectionAnalyzer {
+export function initAnalyzer(_cfg: Config): InjectionAnalyzer {
   tswire([provideProgram, provideWireTypeChecker, InjectionAnalyzer]);
   return null as any;
 }

@@ -1,10 +1,10 @@
 import * as ts from "typescript";
-import { ClassProvider } from "./ClassProvider";
 import { keywords } from "./constants";
 import type { Config } from "./di";
-import { FunctionProvider } from "./FunctionProvider";
-import { InitArgProvider } from "./InitArgProvider";
 import { Initializer } from "./Initializer";
+import { ClassProvider } from "./providers/ClassProvider";
+import { FunctionProvider } from "./providers/FunctionProvider";
+import { InitArgProvider } from "./providers/InitArgProvider";
 import type { WireTypeChecker } from "./types";
 import {
   findSourceFile,

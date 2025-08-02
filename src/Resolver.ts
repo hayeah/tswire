@@ -1,6 +1,6 @@
 import * as ts from "typescript";
-import { ClassProvider } from "./ClassProvider";
-import { FunctionProvider } from "./FunctionProvider";
+import { ClassProvider } from "./providers/ClassProvider";
+import { FunctionProvider } from "./providers/FunctionProvider";
 import { topologicalSort } from "./topsort";
 import type {
   DependencyGraph,

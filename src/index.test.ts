@@ -21,11 +21,12 @@ test("relativeImportPath", () => {
 });
 
 describe("code generation", () => {
-  const glob = new Bun.Glob("./tests/*.ts");
-  
+  const glob = new Bun.Glob("tests/*.ts");
+  const testsDir = path.join(__dirname, "tests");
+
   // Collect all test files first
   const testFiles: string[] = [];
-  for (const file of glob.scanSync()) {
+  for (const file of glob.scanSync({ cwd: __dirname })) {
     if (file.endsWith("_gen.ts") || file.startsWith("_")) {
       continue;
     }
@@ -40,10 +41,10 @@ describe("code generation", () => {
   // Run the actual tests
   for (const file of testFiles) {
     test(file, () => {
-      const originalFilePath = file;
-      const generatedFilePath = file.replace(".ts", "_gen.ts");
+      const originalFilePath = path.join(__dirname, file);
+      const generatedFilePath = originalFilePath.replace(".ts", "_gen.ts");
 
-      const analyzer = analyzerForFile(originalFilePath);
+      const analyzer = analyzerForFile(file);
       const generatedCode = analyzer.code(); // Get generated code from the analyzer
       const expectedCode = fs.readFileSync(generatedFilePath, "utf8"); // Read expected generated code
 

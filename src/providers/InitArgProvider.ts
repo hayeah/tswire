@@ -1,5 +1,5 @@
 import type * as ts from "typescript";
-import type { ProviderInterface, WireTypeChecker } from "./types";
+import type { ProviderInterface, WireTypeChecker } from "../types";
 
 export class InitArgProvider implements ProviderInterface {
   constructor(
