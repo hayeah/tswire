@@ -1,8 +1,8 @@
 export interface Foo {
-  foo: string
+  foo: string;
 }
 
 export interface Bar {
-  bar: string
-  foo: Foo
+  bar: string;
+  foo: Foo;
 }

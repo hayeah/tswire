@@ -1,5 +1,5 @@
-import { type Foo, type Bar } from "./types"
+import type { Bar, Foo } from "./types";
 
 export function provideBar(foo: Foo): Bar {
-  return { bar: "bar", foo }
+  return { bar: "bar", foo };
 }

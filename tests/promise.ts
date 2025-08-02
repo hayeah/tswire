@@ -1,14 +1,14 @@
-import { tswire } from ".."
+import { tswire } from "..";
 
 interface Foo {
-  foo: string
+  foo: string;
 }
 
 export async function provideFoo(): Promise<Foo> {
-  return { foo: "foo" }
+  return { foo: "foo" };
 }
 
 export function init(): Foo {
-  tswire([provideFoo])
-  return null as any
+  tswire([provideFoo]);
+  return null as any;
 }

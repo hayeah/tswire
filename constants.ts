@@ -64,4 +64,4 @@ export const keywords = new Set([
   "while",
   "with",
   "yield",
-])
+]);

@@ -1,11 +1,11 @@
-import { tswire } from ".."
-import { BarClass, type Foo } from "./fixtures/BarClass"
+import { tswire } from "..";
+import { BarClass, type Foo } from "./fixtures/BarClass";
 
 export function provideFoo(): Foo {
-  return { foo: "foo" }
+  return { foo: "foo" };
 }
 
 export function init(): BarClass {
-  tswire([provideFoo, BarClass])
-  return null as any
+  tswire([provideFoo, BarClass]);
+  return null as any;
 }

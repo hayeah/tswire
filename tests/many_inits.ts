@@ -1,27 +1,27 @@
-import { tswire } from ".."
+import { tswire } from "..";
 
 interface Foo {
-  foo: string
+  foo: string;
 }
 
 export function provideFoo(): Foo {
-  return { foo: "foo" }
+  return { foo: "foo" };
 }
 
 interface Bar {
-  bar: string
+  bar: string;
 }
 
 export function provideBar(): Bar {
-  return { bar: "bar" }
+  return { bar: "bar" };
 }
 
-function initFoo(): Foo {
-  tswire([provideFoo])
-  return null as any
+function _initFoo(): Foo {
+  tswire([provideFoo]);
+  return null as any;
 }
 
-function initBar(): Bar {
-  tswire([provideBar])
-  return null as any
+function _initBar(): Bar {
+  tswire([provideBar]);
+  return null as any;
 }

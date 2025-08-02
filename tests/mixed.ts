@@ -1,19 +1,19 @@
-import { tswire } from ".."
+import { tswire } from "..";
 
 interface Foo {
-  foo: string
+  foo: string;
 }
 
 interface Bar {
-  bar: string
+  bar: string;
 
-  foo: Foo
+  foo: Foo;
 }
 
 interface Baz {
-  foo: Foo
-  bar: Bar
-  fooClass: FooClass
+  foo: Foo;
+  bar: Bar;
+  fooClass: FooClass;
 }
 
 export class FooClass {
@@ -21,25 +21,25 @@ export class FooClass {
 }
 
 export function provideBar(foo: Foo): Bar {
-  return { bar: "bar", foo }
+  return { bar: "bar", foo };
 }
 
 export function provideFoo(): Foo {
-  return { foo: "foo" }
+  return { foo: "foo" };
 }
 
 export function provideBaz(foo: Foo, bar: Bar, fooClass: FooClass): Baz {
-  return { foo, bar, fooClass }
+  return { foo, bar, fooClass };
 }
 
-function initBaz(): Baz {
-  tswire([provideBar, provideFoo, provideBaz, FooClass])
-  return null as any
+export function initBaz(): Baz {
+  tswire([provideBar, provideFoo, provideBaz, FooClass]);
+  return null as any;
 }
 
-function initFoo(): Foo {
-  tswire([provideFoo])
-  return null as any
+export function initFoo(): Foo {
+  tswire([provideFoo]);
+  return null as any;
 }
 
 // not an initializer because it has no return type

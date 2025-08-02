@@ -1,39 +1,39 @@
-import * as ts from "typescript"
-import { topologicalSort } from "./topsort"
-import path from "path"
-import { keywords } from "./constants"
+import path from "node:path";
+import * as ts from "typescript";
+import { keywords } from "./constants";
+import { topologicalSort } from "./topsort";
 
 const nonInjectableReturnTypes =
   ts.TypeFlags.Void |
   ts.TypeFlags.Any |
   ts.TypeFlags.Undefined |
-  ts.TypeFlags.Never
+  ts.TypeFlags.Never;
 
 function escapeKeyword(name: string): string {
   // Check if the name is a keyword and prefix it with '$' if it is
   if (keywords.has(name)) {
-    return `$${name}`
+    return `$${name}`;
   }
 
-  return name
+  return name;
 }
 
 function lowerFirstChar(str: string): string {
-  if (str.length === 0) return str // Check if the string is empty
-  return str.charAt(0).toLowerCase() + str.slice(1)
+  if (str.length === 0) return str; // Check if the string is empty
+  return str.charAt(0).toLowerCase() + str.slice(1);
 }
 
 function variableNameForType(type: ts.Type): string {
   // if a keyword, prefix it with "$"
-  return escapeKeyword(lowerFirstChar(typeName(type)))
+  return escapeKeyword(lowerFirstChar(typeName(type)));
 }
 
 function findSourceFile(node: ts.Node): ts.SourceFile {
-  let current: ts.Node = node
+  let current: ts.Node = node;
   while (current && !ts.isSourceFile(current)) {
-    current = current.parent
+    current = current.parent;
   }
-  return current as ts.SourceFile
+  return current as ts.SourceFile;
 }
 
 export function relativeImportPath(
@@ -47,22 +47,22 @@ export function relativeImportPath(
     // Remove the file extension
     .replace(/\.\w+$/, "")
     // Ensure import path format (replace \ with / for non-UNIX systems)
-    .replace(/\\/g, "/")
+    .replace(/\\/g, "/");
   // If the path does not start with '.', add './' to make it a relative path
   if (!importPath.startsWith(".")) {
-    importPath = "./" + importPath
+    importPath = `./${importPath}`;
   }
 
-  return importPath
+  return importPath;
 }
 
 export interface ProviderInterface {
-  node(): ts.Node
+  node(): ts.Node;
 
-  exportName(): string
+  exportName(): string;
 
-  inputTypes(): ts.Type[]
-  outputType(): ts.Type
+  inputTypes(): ts.Type[];
+  outputType(): ts.Type;
 }
 
 export class ClassProvider implements ProviderInterface {
@@ -72,64 +72,64 @@ export class ClassProvider implements ProviderInterface {
   ) {}
 
   node(): ts.Node {
-    return this.declaration
+    return this.declaration;
   }
 
   exportName(): string {
-    return this.declaration.name!.text
+    return this.declaration.name?.text;
   }
 
   inputTypes(): ts.Type[] {
-    const constructor = this.findConstructor()
+    const constructor = this.findConstructor();
     if (!constructor) {
       // If no constructor is found, return an empty array indicating no inputs are needed.
-      return []
+      return [];
     }
 
     // Map each parameter in the constructor to its type.
     return constructor.parameters.map((param, index) => {
       if (!param.type) {
-        const sourceFile = findSourceFile(this.declaration)
+        const sourceFile = findSourceFile(this.declaration);
         const { line, character } = ts.getLineAndCharacterOfPosition(
           sourceFile,
           param.getStart(),
-        )
-        const className = this.declaration.name?.getText() || "<anonymous>"
-        const paramName = param.name?.getText() || `parameter ${index + 1}`
+        );
+        const className = this.declaration.name?.getText() || "<anonymous>";
+        const paramName = param.name?.getText() || `parameter ${index + 1}`;
         throw new Error(
           `tswire: parameter "${paramName}" of class "${className}" constructor at ${
             sourceFile.fileName
           }:${line + 1}:${character + 1} must have an explicit type annotation`,
-        )
+        );
       }
-      return this.checker.getTypeAtLocationWithAliasSymbol(param.type)
-    })
+      return this.checker.getTypeAtLocationWithAliasSymbol(param.type);
+    });
   }
 
   outputType(): ts.Type {
     // The output type is the class type itself.
-    return this.checker.getTypeAtLocation(this.declaration.name!)
+    return this.checker.getTypeAtLocation(this.declaration.name!);
   }
 
   private findConstructor(): ts.ConstructorDeclaration | null {
-    let currentClass: ts.ClassDeclaration = this.declaration
+    let currentClass: ts.ClassDeclaration = this.declaration;
 
     while (currentClass) {
       const constructor = currentClass.members.find(
         ts.isConstructorDeclaration,
-      ) as ts.ConstructorDeclaration | undefined
+      ) as ts.ConstructorDeclaration | undefined;
       if (constructor) {
-        return constructor
+        return constructor;
       }
 
       // Move up to the superclass (if any)
-      const superclass = this.findSuperClass(currentClass)
+      const superclass = this.findSuperClass(currentClass);
       if (!superclass) {
-        return null
+        return null;
       }
-      currentClass = superclass
+      currentClass = superclass;
     }
-    return null
+    return null;
   }
 
   private findSuperClass(
@@ -137,47 +137,53 @@ export class ClassProvider implements ProviderInterface {
   ): ts.ClassDeclaration | null {
     const heritageClause = classDeclaration.heritageClauses?.find(
       (h) => h.token === ts.SyntaxKind.ExtendsKeyword,
-    )
+    );
     if (!heritageClause || heritageClause.types.length === 0) {
-      return null
+      return null;
     }
 
-    const type = this.checker.getTypeAtLocation(heritageClause.types[0])
+    const type = this.checker.getTypeAtLocation(heritageClause.types[0]);
     if (!type.symbol) {
-      return null
+      return null;
     }
 
-    const declarations = type.symbol.declarations
+    const declarations = type.symbol.declarations;
     const classDecl = declarations?.find(
       (decl) => decl.kind === ts.SyntaxKind.ClassDeclaration,
-    ) as ts.ClassDeclaration | undefined
+    ) as ts.ClassDeclaration | undefined;
 
-    return classDecl || null
+    return classDecl || null;
   }
 }
 
 export interface AliasType extends ts.Type {
-  tswireTypeAliasSymbol: ts.Symbol
+  tswireTypeAliasSymbol: ts.Symbol;
 }
 
 export function isAliasType(type: ts.Type): type is AliasType {
-  return "tswireTypeAliasSymbol" in type
+  return "tswireTypeAliasSymbol" in type;
 }
 
 export class InitArgProvider implements ProviderInterface {
   constructor(
     private param: ts.ParameterDeclaration,
-    private checker: WireTypeChecker
+    private checker: WireTypeChecker,
   ) {}
 
-  node(): ts.Node { return this.param }
+  node(): ts.Node {
+    return this.param;
+  }
 
-  exportName(): string { return this.param.name.getText() }
+  exportName(): string {
+    return this.param.name.getText();
+  }
 
-  inputTypes(): ts.Type[] { return [] }
+  inputTypes(): ts.Type[] {
+    return [];
+  }
 
   outputType(): ts.Type {
-    return this.checker.getTypeAtLocationWithAliasSymbol(this.param.type!)
+    return this.checker.getTypeAtLocationWithAliasSymbol(this.param.type!);
   }
 }
 
@@ -187,107 +193,107 @@ export class FunctionProvider implements ProviderInterface {
     protected checker: WireTypeChecker,
   ) {
     if (!declaration.type) {
-      const sourceFile = findSourceFile(declaration)
+      const sourceFile = findSourceFile(declaration);
       const { line, character } = ts.getLineAndCharacterOfPosition(
         sourceFile,
         declaration.getStart(),
-      )
-      const name = declaration.name?.getText() || "<anonymous>"
+      );
+      const name = declaration.name?.getText() || "<anonymous>";
       throw new Error(
         `tswire: provider "${name}" at ${sourceFile.fileName}:${line + 1}:${
           character + 1
         } must declare an explicit return-type annotation`,
-      )
+      );
     }
   }
 
   node(): ts.Node {
-    return this.declaration
+    return this.declaration;
   }
 
   exportName(): string {
-    return this.declaration.name!.text
+    return this.declaration.name?.text;
   }
 
   get isAsync(): boolean {
     return !!this.declaration.modifiers?.some(
       (mod) => mod.kind === ts.SyntaxKind.AsyncKeyword,
-    )
+    );
   }
 
   unwrapAsyncPromiseType(returnType: ts.Type): ts.Type {
     if (returnType.symbol.name !== "Promise") {
-      throw new Error("Expected a Promise type")
+      throw new Error("Expected a Promise type");
     }
 
     // I can't figure out if there is a type narrow in the compiler API
     const targs: ts.Type[] | undefined = (returnType as any)
-      .resolvedTypeArguments
+      .resolvedTypeArguments;
 
-    if (targs && targs.length == 1) {
-      return targs[0]
+    if (targs && targs.length === 1) {
+      return targs[0];
     }
 
-    throw new Error("No type argument found for Promise type")
+    throw new Error("No type argument found for Promise type");
   }
 
   outputType(): ts.Type {
     if (!this.declaration.type) {
-      const sourceFile = findSourceFile(this.declaration)
+      const sourceFile = findSourceFile(this.declaration);
       const { line, character } = ts.getLineAndCharacterOfPosition(
         sourceFile,
         this.declaration.getStart(),
-      )
-      const name = this.declaration.name?.getText() || "<anonymous>"
+      );
+      const name = this.declaration.name?.getText() || "<anonymous>";
       throw new Error(
         `tswire: provider "${name}" at ${sourceFile.fileName}:${line + 1}:${
           character + 1
         } must declare an explicit return-type annotation`,
-      )
+      );
     }
 
-    let typeNode = this.declaration.type
+    let typeNode = this.declaration.type;
 
     // if (type.getText().startsWith("Promise<")) {}
     if (this.isAsync) {
       // Expect this to be the case if isAsync is true
-      typeNode = (typeNode as ts.NodeWithTypeArguments).typeArguments![0]
+      typeNode = (typeNode as ts.NodeWithTypeArguments).typeArguments?.[0];
     }
 
     // this.declaration.type.getText() // "Promise<Foo>"
     // this.declaration.type.typeArguments[0].getText() // Foo
-    return this.checker.getTypeAtLocationWithAliasSymbol(typeNode)
+    return this.checker.getTypeAtLocationWithAliasSymbol(typeNode);
   }
 
-  private _inputTypes?: ts.Type[]
+  private _inputTypes?: ts.Type[];
   inputTypes(): ts.Type[] {
     if (this._inputTypes) {
-      return this._inputTypes
+      return this._inputTypes;
     }
 
     this._inputTypes = this.declaration.parameters.map((param, index) => {
       if (!param.type) {
-        const sourceFile = findSourceFile(this.declaration)
+        const sourceFile = findSourceFile(this.declaration);
         const { line, character } = ts.getLineAndCharacterOfPosition(
           sourceFile,
           param.getStart(),
-        )
-        const functionName = this.declaration.name?.getText() || "<anonymous>"
-        const paramName = param.name?.getText() || `parameter ${index + 1}`
+        );
+        const functionName = this.declaration.name?.getText() || "<anonymous>";
+        const paramName = param.name?.getText() || `parameter ${index + 1}`;
         throw new Error(
           `tswire: parameter "${paramName}" of provider "${functionName}" at ${
             sourceFile.fileName
           }:${line + 1}:${character + 1} must have an explicit type annotation`,
-        )
+        );
       }
-      return this.checker.getTypeAtLocationWithAliasSymbol(param.type)
-    })
+      return this.checker.getTypeAtLocationWithAliasSymbol(param.type);
+    });
 
     // this._inputTypes = this.signature.getParameters().map((param) => {
     //   return this.getTypeAtLocationWithAliasSymbol(param.type)
     // })
 
-    return this._inputTypes
+    return this._inputTypes;
   }
 }
 
@@ -298,16 +304,16 @@ export class FunctionProvider implements ProviderInterface {
 // the graph will have an entry with `A` as the key, and a set containing `B` and `C`.
 // This graph is used to determine the order in which provider functions should be called to satisfy dependencies,
 // ensuring that all inputs for a given provider are available before it is invoked.
-type DependencyGraph = Map<ts.Symbol, Set<ts.Symbol>>
+type DependencyGraph = Map<ts.Symbol, Set<ts.Symbol>>;
 
 interface WireTypeChecker extends ts.TypeChecker {
-  getTypeAtLocationWithAliasSymbol(node: ts.Node): ts.Type
+  getTypeAtLocationWithAliasSymbol(node: ts.Node): ts.Type;
 }
 
 function monkeyPatchTypeChecker(checker: ts.TypeChecker): WireTypeChecker {
-  const wc = Object.create(checker)
+  const wc = Object.create(checker);
 
-  const cache = new Map<ts.Symbol, ts.Type>()
+  const cache = new Map<ts.Symbol, ts.Type>();
 
   // getTypeAtLocationPreserveReference returns the type, with type alias symbol
   // if applicable. It resolves to the same object instance for the same aliased
@@ -315,31 +321,31 @@ function monkeyPatchTypeChecker(checker: ts.TypeChecker): WireTypeChecker {
   //
   // This is necessary because there does not seem to be a way to get an
   // intermedia ts.Type for the aliasing symbol.
-  wc.getTypeAtLocationWithAliasSymbol = function (node: ts.Node): ts.Type {
+  wc.getTypeAtLocationWithAliasSymbol = (node: ts.Node): ts.Type => {
     // getTypeAtLocation gives the resolved type for type aliases
-    let type = checker.getTypeAtLocation(node)
+    let type = checker.getTypeAtLocation(node);
 
     if (ts.isTypeReferenceNode(node)) {
-      const symbol = checker.getSymbolAtLocation(node.typeName)!
+      const symbol = checker.getSymbolAtLocation(node.typeName)!;
 
       if (!symbol) {
-        throw new Error("symbol not found")
+        throw new Error("symbol not found");
       }
 
-      const isIntrinsic = type.symbol == undefined
+      const isIntrinsic = type.symbol === undefined;
 
       // idea: detect if the resolved type has a different symbol from the type
       // name we are looking at right now, then it's a type alias.
-      const isTypeAlias = isIntrinsic || type.symbol != symbol
+      const isTypeAlias = isIntrinsic || type.symbol !== symbol;
 
       if (!isTypeAlias) {
-        return type
+        return type;
       }
 
       // need to return the same wrapped ts.Type for this symbol, so object
       // identity works for using ts.Type as key in Map
       if (cache.has(symbol)) {
-        return cache.get(symbol)!
+        return cache.get(symbol)!;
       }
 
       // Notes on the type returned by checker. No immediate type could be
@@ -363,47 +369,47 @@ function monkeyPatchTypeChecker(checker: ts.TypeChecker): WireTypeChecker {
           // enumerable: true,
           // configurable: true
         },
-      })
+      });
 
-      cache.set(symbol, aliasedType)
+      cache.set(symbol, aliasedType);
 
-      type = aliasedType
+      type = aliasedType;
     }
 
-    return type
-  }
+    return type;
+  };
 
-  return wc
+  return wc;
 }
 
 export function typeName(type: ts.Type): string {
   if (isAliasType(type)) {
-    return type.tswireTypeAliasSymbol.name
+    return type.tswireTypeAliasSymbol.name;
   }
 
   if (type.symbol) {
-    return type.symbol.name
+    return type.symbol.name;
   }
 
   if ("intrinsicName" in type) {
-    return type.intrinsicName as string
+    return type.intrinsicName as string;
   }
 
-  return ""
+  return "";
 }
 
 function canonicalSymbol(
   type: ts.Type,
   checker: ts.TypeChecker,
 ): ts.Symbol | undefined {
-  let sym = isAliasType(type) ? type.tswireTypeAliasSymbol : type.symbol
-  if (!sym) return sym
+  let sym = isAliasType(type) ? type.tswireTypeAliasSymbol : type.symbol;
+  if (!sym) return sym;
 
   // Collapse import-aliases to their original declaration
   if (sym.flags & ts.SymbolFlags.Alias) {
-    sym = checker.getAliasedSymbol(sym)
+    sym = checker.getAliasedSymbol(sym);
   }
-  return sym
+  return sym;
 }
 
 export class Resolver {
@@ -419,13 +425,13 @@ export class Resolver {
    * @throws Error if the symbol is not found
    */
   public canonicalSymbol(type: ts.Type): ts.Symbol {
-    const symbol = canonicalSymbol(type, this.checker)
-    
+    const symbol = canonicalSymbol(type, this.checker);
+
     if (!symbol) {
-      throw new Error(`Type has no symbol: ${typeName(type)}`)
+      throw new Error(`Type has no symbol: ${typeName(type)}`);
     }
-    
-    return symbol
+
+    return symbol;
   }
 
   /**
@@ -435,29 +441,29 @@ export class Resolver {
    * @returns An array of function declarations corresponding to providers.
    */
   public collectProviders(arg: ts.Expression): ProviderInterface[] {
-    const providerDeclarations: ProviderInterface[] = []
-    const checker = this.checker
-    const sourceFile = findSourceFile(arg)
+    const providerDeclarations: ProviderInterface[] = [];
+    const checker = this.checker;
+    const sourceFile = findSourceFile(arg);
 
     function processExpression(expression: ts.Node): void {
       if (ts.isPropertyAccessExpression(expression)) {
-        const symbol = checker.getSymbolAtLocation(expression)
+        const symbol = checker.getSymbolAtLocation(expression);
 
         if (!symbol) {
-          throw new Error(`Unknown symbol found: ${expression.getText()}`)
+          throw new Error(`Unknown symbol found: ${expression.getText()}`);
         }
 
-        const declaration = symbol?.valueDeclaration
+        const declaration = symbol?.valueDeclaration;
 
         if (!declaration) {
-          throw new Error(`undeclared symbol found: ${symbol.name}`)
+          throw new Error(`undeclared symbol found: ${symbol.name}`);
         }
 
-        processExpression(declaration)
+        processExpression(declaration);
       } else if (ts.isIdentifier(expression)) {
-        let symbol = checker.getSymbolAtLocation(expression)
+        let symbol = checker.getSymbolAtLocation(expression);
         if (!symbol) {
-          throw new Error(`Unknown symbol found: ${expression.getText()}`)
+          throw new Error(`Unknown symbol found: ${expression.getText()}`);
         }
 
         // detect module reference, and resolved the aliased (i.e. imported)
@@ -465,12 +471,12 @@ export class Resolver {
         if (!symbol.valueDeclaration && ts.isModuleReference(expression)) {
           // q: or just test for ~symbol.valueDeclaration?
           // resolve module import
-          symbol = checker.getAliasedSymbol(symbol)
+          symbol = checker.getAliasedSymbol(symbol);
         }
 
-        const declaration = symbol.valueDeclaration
+        const declaration = symbol.valueDeclaration;
         if (!declaration) {
-          throw new Error(`undeclared symbol found: ${symbol.name}`)
+          throw new Error(`undeclared symbol found: ${symbol.name}`);
         }
 
         // ts.isTypeAliasDeclaration(expression)
@@ -480,29 +486,29 @@ export class Resolver {
         // ts.isExternalModuleReference(expression)
         // ts.isConstTypeReference(expression)
 
-        processExpression(declaration)
+        processExpression(declaration);
 
         // dereference the variable declaration initializer
       } else if (ts.isVariableDeclaration(expression)) {
         if (expression.initializer) {
-          processExpression(expression.initializer)
+          processExpression(expression.initializer);
         } else {
-          throw new Error("Variable does not have an initializer")
+          throw new Error("Variable does not have an initializer");
         }
       } else if (ts.isArrayLiteralExpression(expression)) {
         // Process each element in the array literal
-        for (let elem of expression.elements) {
-          processExpression(elem)
+        for (const elem of expression.elements) {
+          processExpression(elem);
         }
       } else if (ts.isClassDeclaration(expression)) {
-        providerDeclarations.push(new ClassProvider(expression, checker))
+        providerDeclarations.push(new ClassProvider(expression, checker));
       } else if (ts.isFunctionDeclaration(expression)) {
         const isExported = expression.modifiers?.some(
           (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-        )
+        );
 
         if (!isExported) {
-          throw new Error("Provider function must be exported")
+          throw new Error("Provider function must be exported");
         }
 
         // Check for explicit return type annotation
@@ -510,16 +516,16 @@ export class Resolver {
           const { line, character } = ts.getLineAndCharacterOfPosition(
             sourceFile,
             expression.getStart(),
-          )
-          const name = expression.name?.getText() || "<anonymous>"
+          );
+          const name = expression.name?.getText() || "<anonymous>";
           throw new Error(
             `tswire: provider "${name}" at ${sourceFile.fileName}:${line + 1}:${
               character + 1
             } must declare an explicit return-type annotation`,
-          )
+          );
         }
 
-        providerDeclarations.push(new FunctionProvider(expression, checker))
+        providerDeclarations.push(new FunctionProvider(expression, checker));
       } else if (
         ts.isArrowFunction(expression) ||
         ts.isFunctionExpression(expression) ||
@@ -528,23 +534,23 @@ export class Resolver {
         const { line, character } = ts.getLineAndCharacterOfPosition(
           sourceFile,
           expression.getStart(),
-        )
+        );
         const name = expression
           .getText(sourceFile)
           .slice(0, 40)
-          .replace(/\s+/g, " ")
+          .replace(/\s+/g, " ");
         throw new Error(
           `tswire: provider starting with "${name}..." at ${sourceFile.fileName}:${
             line + 1
           }:${character + 1} must be a function or class declaration, ` +
             `not a variable, arrow function, or import reference`,
-        )
+        );
       }
     }
 
-    processExpression(arg)
+    processExpression(arg);
 
-    return providerDeclarations
+    return providerDeclarations;
   }
 
   /**
@@ -552,76 +558,77 @@ export class Resolver {
    * This graph maps the return types of provider functions to a set of types they depend on.
    * @returns The DependencyGraph mapping provider return types to their dependencies.
    */
-  public buildDependencyGraph(providers?: ProviderInterface[]): DependencyGraph {
-    const dependencyGraph: DependencyGraph = new Map()
+  public buildDependencyGraph(
+    providers?: ProviderInterface[],
+  ): DependencyGraph {
+    const dependencyGraph: DependencyGraph = new Map();
     if (!providers) {
-      providers = this.collectProviders(this.entry)
+      providers = this.collectProviders(this.entry);
     }
 
     for (const provider of providers) {
-      const outputType = provider.outputType()
-      const outputSymbol = this.canonicalSymbol(outputType)
+      const outputType = provider.outputType();
+      const outputSymbol = this.canonicalSymbol(outputType);
 
-      const inputTypes = provider.inputTypes()
+      const inputTypes = provider.inputTypes();
 
-      let dependencies = dependencyGraph.get(outputSymbol)
+      let dependencies = dependencyGraph.get(outputSymbol);
       if (!dependencies) {
-        dependencies = new Set<ts.Symbol>()
-        dependencyGraph.set(outputSymbol, dependencies)
+        dependencies = new Set<ts.Symbol>();
+        dependencyGraph.set(outputSymbol, dependencies);
       }
 
       for (const paramType of inputTypes) {
-        const paramSymbol = this.canonicalSymbol(paramType)
-        dependencies.add(paramSymbol)
+        const paramSymbol = this.canonicalSymbol(paramType);
+        dependencies.add(paramSymbol);
       }
-      
     }
 
-    return dependencyGraph
+    return dependencyGraph;
   }
 
   public linearizeProvidersForReturnType(
     providers: ProviderInterface[],
     returnType: ts.Type,
   ): ProviderInterface[] {
-    const providerMap = new Map<ts.Symbol, ProviderInterface>()
+    const providerMap = new Map<ts.Symbol, ProviderInterface>();
 
     // populate providerMap with providers. This is just a map from the return
     // type symbol of the provider to the provider.
-    for (let provider of providers) {
-      const outputType = provider.outputType()
-      const outputSymbol = this.canonicalSymbol(outputType)
+    for (const provider of providers) {
+      const outputType = provider.outputType();
+      const outputSymbol = this.canonicalSymbol(outputType);
 
-      providerMap.set(outputSymbol, provider)
+      providerMap.set(outputSymbol, provider);
     }
 
-    const dependencyGraph = this.buildDependencyGraph(providers)
-    const returnSymbol = this.canonicalSymbol(returnType)
-    
-    const order = topologicalSort(returnSymbol, dependencyGraph)
+    const dependencyGraph = this.buildDependencyGraph(providers);
+    const returnSymbol = this.canonicalSymbol(returnType);
 
-    const linearizedProviders: ProviderInterface[] = []
-    const seen = new Set<ts.Symbol>()
-    
+    const order = topologicalSort(returnSymbol, dependencyGraph);
+
+    const linearizedProviders: ProviderInterface[] = [];
+    const seen = new Set<ts.Symbol>();
+
     for (const sym of order) {
       if (seen.has(sym)) {
-        continue
+        continue;
       }
-      seen.add(sym)
-      
-      const provider = providerMap.get(sym)
+      seen.add(sym);
+
+      const provider = providerMap.get(sym);
       if (!provider) {
-        throw new Error(`cannot find provider: ${sym.getName()}`)
+        throw new Error(`cannot find provider: ${sym.getName()}`);
       }
-      linearizedProviders.push(provider)
+      linearizedProviders.push(provider);
     }
 
-    return linearizedProviders
+    return linearizedProviders;
   }
 }
 
 export class Initializer {
-  private resolver: Resolver
+  private resolver: Resolver;
 
   constructor(
     private context: InjectionAnalyzer,
@@ -629,39 +636,41 @@ export class Initializer {
     // public signature: ts.Signature,
     public providersEntry: ts.Expression,
   ) {
-    this.resolver = new Resolver(this.providersEntry, this.context.checker)
+    this.resolver = new Resolver(this.providersEntry, this.context.checker);
   }
 
   get checker() {
-    return this.context.checker
+    return this.context.checker;
   }
 
   get name(): string {
-    return this.declaration.name!.text
+    return this.declaration.name?.text;
   }
 
   get returnType(): ts.Type {
-    return this.checker.getTypeAtLocationWithAliasSymbol(this.declaration.type!)
+    return this.checker.getTypeAtLocationWithAliasSymbol(
+      this.declaration.type!,
+    );
   }
 
   private initArgProviders(): ProviderInterface[] {
     return this.declaration.parameters.map(
-      p => new InitArgProvider(p, this.checker)
-    )
+      (p) => new InitArgProvider(p, this.checker),
+    );
   }
 
   public providers(): ProviderInterface[] {
     return [
       ...this.resolver.collectProviders(this.providersEntry),
-      ...this.initArgProviders()
-    ]
+      ...this.initArgProviders(),
+    ];
   }
 
   public linearizedProviders(): ProviderInterface[] {
     return this.resolver.linearizeProvidersForReturnType(
       this.providers(),
       this.returnType,
-    )
+    );
   }
 }
 
@@ -673,234 +682,258 @@ export class Initializer {
 // with `_wire` appended to the filename.
 function wireOutputPath(inputFilePath: string): string {
   // Extract the directory, filename without extension, and extension from the input path.
-  const dirname = path.dirname(inputFilePath)
-  const extname = path.extname(inputFilePath)
-  const basename = path.basename(inputFilePath, extname)
+  const dirname = path.dirname(inputFilePath);
+  const extname = path.extname(inputFilePath);
+  const basename = path.basename(inputFilePath, extname);
 
   // Append '_gen' to the basename, then reconstruct the path.
-  const outputFileName = `${basename}_gen${extname}`
-  const outputFilePath = path.join(dirname, outputFileName)
+  const outputFileName = `${basename}_gen${extname}`;
+  const outputFilePath = path.join(dirname, outputFileName);
 
-  return outputFilePath
+  return outputFilePath;
 }
 
 export class InjectionAnalyzer {
-  public program: ts.Program
-  public checker: WireTypeChecker
+  public program: ts.Program;
+  public checker: WireTypeChecker;
 
   constructor(public rootFile: string) {
-    this.program = ts.createProgram([rootFile], { allowJs: true })
-    this.checker = monkeyPatchTypeChecker(this.program.getTypeChecker())
+    this.program = ts.createProgram([rootFile], { allowJs: true });
+    this.checker = monkeyPatchTypeChecker(this.program.getTypeChecker());
   }
 
   public async writeCode(outputFile?: string) {
     if (!outputFile) {
-      outputFile = wireOutputPath(this.rootFile)
+      outputFile = wireOutputPath(this.rootFile);
     }
-    await Bun.write(outputFile, this.code())
+    await Bun.write(outputFile, this.code());
   }
 
   public findInitializers(): Initializer[] {
-    const inits: Initializer[] = []
+    const inits: Initializer[] = [];
 
-    const checker = this.checker
-    const self = this
+    const checker = this.checker;
+    const self = this;
 
     // checkAndReturnInitializer returns Initializer if a node is a function declaration with a `tswire` call.
     function checkAndReturnInitializer(node: ts.Node): Initializer | undefined {
       if (!ts.isFunctionDeclaration(node)) {
-        return
+        return;
       }
 
       if (!node.body || node.body.statements.length === 0) {
-        return
+        return;
       }
 
       if (!node.name) {
-        return
+        return;
       }
 
-      const signature = checker.getSignatureFromDeclaration(node)
+      const signature = checker.getSignatureFromDeclaration(node);
       if (!signature) {
-        return
+        return;
       }
 
       // check return type is not void...
-      const rtype = signature.getReturnType()
+      const rtype = signature.getReturnType();
       if (rtype.flags & nonInjectableReturnTypes) {
-        return
+        return;
       }
 
-      const firstStatement = node.body.statements[0]
+      const firstStatement = node.body.statements[0];
 
       if (
         ts.isExpressionStatement(firstStatement) &&
         ts.isCallExpression(firstStatement.expression) &&
         firstStatement.expression.expression.getText() === "tswire" &&
-        firstStatement.expression.arguments.length == 1
+        firstStatement.expression.arguments.length === 1
       ) {
-        const providers = firstStatement.expression.arguments[0]
-        return new Initializer(self, node, providers)
+        const providers = firstStatement.expression.arguments[0];
+        return new Initializer(self, node, providers);
       }
     }
 
     function visit(node: ts.Node) {
-      const init = checkAndReturnInitializer(node)
+      const init = checkAndReturnInitializer(node);
       if (init) {
-        inits.push(init)
+        inits.push(init);
       }
     }
 
-    const sourceFile = this.program.getSourceFile(this.rootFile)
+    const sourceFile = this.program.getSourceFile(this.rootFile);
     if (!sourceFile) {
-      throw new Error(`source file not found: ${this.rootFile}`)
+      throw new Error(`source file not found: ${this.rootFile}`);
     }
 
-    ts.forEachChild(sourceFile, visit)
+    ts.forEachChild(sourceFile, visit);
 
-    return inits
+    return inits;
   }
 
   public code(): string {
-    const inits = this.findInitializers()
+    const inits = this.findInitializers();
     // Track both regular and type-only imports
-    const importsMap: Map<string, { regular: Set<string>, typeOnly: Set<string> }> = new Map()
-    const functions: string[] = []
+    const importsMap: Map<
+      string,
+      { regular: Set<string>; typeOnly: Set<string> }
+    > = new Map();
+    const functions: string[] = [];
 
     // Collect all necessary imports and function bodies from initializers
     for (const init of inits) {
-      const { functionBody } = this.generateInitFunction(init, importsMap)
-      functions.push(functionBody)
+      const { functionBody } = this.generateInitFunction(init, importsMap);
+      functions.push(functionBody);
     }
 
     // Generate the combined import statements
-    const importStatements: string[] = []
+    const importStatements: string[] = [];
     for (const [path, { regular, typeOnly }] of importsMap) {
       if (regular.size > 0) {
-        importStatements.push(`import { ${Array.from(regular).join(", ")} } from "${path}";`)
+        importStatements.push(
+          `import { ${Array.from(regular).join(", ")} } from "${path}";`,
+        );
       }
       if (typeOnly.size > 0) {
-        importStatements.push(`import type { ${Array.from(typeOnly).join(", ")} } from "${path}";`)
+        importStatements.push(
+          `import type { ${Array.from(typeOnly).join(", ")} } from "${path}";`,
+        );
       }
     }
-    const imports = importStatements.join("\n")
+    const imports = importStatements.join("\n");
 
     // Combine all parts into one output
-    return `${imports}\n\n${functions.join("\n\n")}`
+    return `${imports}\n\n${functions.join("\n\n")}`;
   }
 
   private generateInitFunction(
     init: Initializer,
-    importStatements: Map<string, { regular: Set<string>, typeOnly: Set<string> }>,
+    importStatements: Map<
+      string,
+      { regular: Set<string>; typeOnly: Set<string> }
+    >,
   ): {
-    functionBody: string
+    functionBody: string;
   } {
-    const providers = init.linearizedProviders()
-    const typeToVariableNameMap = new Map<string, string>()
-    const providerCalls = []
-    const usedNames = new Set<string>() // Tracks used names to avoid collisions
+    const providers = init.linearizedProviders();
+    const typeToVariableNameMap = new Map<string, string>();
+    const providerCalls = [];
+    const usedNames = new Set<string>(); // Tracks used names to avoid collisions
 
     // Before iterating over providers, handle init parameters
     for (const param of init.declaration.parameters) {
-      const paramName = param.name.getText()
-      const paramType = this.checker.getTypeAtLocationWithAliasSymbol(param.type!)
-      const paramTypeName = typeName(paramType)
-      typeToVariableNameMap.set(paramTypeName, paramName)
-      usedNames.add(paramName)
-      
+      const paramName = param.name.getText();
+      const paramType = this.checker.getTypeAtLocationWithAliasSymbol(
+        param.type!,
+      );
+      const paramTypeName = typeName(paramType);
+      typeToVariableNameMap.set(paramTypeName, paramName);
+      usedNames.add(paramName);
+
       // Check if we need to import the parameter type
-      const typeSymbol = paramType.getSymbol()
-      if (typeSymbol && typeSymbol.declarations && typeSymbol.declarations.length > 0) {
-        const declaration = typeSymbol.declarations[0]
-        const sourceFile = declaration.getSourceFile()
-        
+      const typeSymbol = paramType.getSymbol();
+      if (typeSymbol?.declarations && typeSymbol.declarations.length > 0) {
+        const declaration = typeSymbol.declarations[0];
+        const sourceFile = declaration.getSourceFile();
+
         // Only import if it's from the same file and is exported
         if (sourceFile.fileName === init.declaration.getSourceFile().fileName) {
           const isExported = (declaration as any).modifiers?.some(
-            (modifier: ts.Modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
-          )
-          
+            (modifier: ts.Modifier) =>
+              modifier.kind === ts.SyntaxKind.ExportKeyword,
+          );
+
           if (isExported) {
-            const importPath = relativeImportPath(this.rootFile, sourceFile.fileName)
-            let importInfo = importStatements.get(importPath)
+            const importPath = relativeImportPath(
+              this.rootFile,
+              sourceFile.fileName,
+            );
+            let importInfo = importStatements.get(importPath);
             if (!importInfo) {
-              importInfo = { regular: new Set<string>(), typeOnly: new Set<string>() }
-              importStatements.set(importPath, importInfo)
+              importInfo = {
+                regular: new Set<string>(),
+                typeOnly: new Set<string>(),
+              };
+              importStatements.set(importPath, importInfo);
             }
             // Parameter types should be imported as type-only
-            importInfo.typeOnly.add(paramTypeName)
+            importInfo.typeOnly.add(paramTypeName);
           }
         }
       }
     }
 
-    for (let provider of providers) {
-      const outputType = provider.outputType()
-      const outputTypeName = typeName(outputType)
-      
+    for (const provider of providers) {
+      const outputType = provider.outputType();
+      const outputTypeName = typeName(outputType);
+
       // Skip processing for InitArgProvider since variable names are already set from parameters
       if (provider instanceof InitArgProvider) {
-        continue
+        continue;
       }
 
-      const baseName = variableNameForType(outputType)
-      let uniqueName = baseName
-      let counter = 1
+      const baseName = variableNameForType(outputType);
+      let uniqueName = baseName;
+      let counter = 1;
       while (usedNames.has(uniqueName)) {
-        uniqueName = `${baseName}${counter}`
-        counter++
+        uniqueName = `${baseName}${counter}`;
+        counter++;
       }
-      usedNames.add(uniqueName)
-      typeToVariableNameMap.set(outputTypeName, uniqueName)
+      usedNames.add(uniqueName);
+      typeToVariableNameMap.set(outputTypeName, uniqueName);
 
-      const providerTypeName = provider.exportName()
-      const declarationFileName = findSourceFile(provider.node()).fileName
-      const importPath = relativeImportPath(this.rootFile, declarationFileName)
-      let importInfo = importStatements.get(importPath)
+      const providerTypeName = provider.exportName();
+      const declarationFileName = findSourceFile(provider.node()).fileName;
+      const importPath = relativeImportPath(this.rootFile, declarationFileName);
+      let importInfo = importStatements.get(importPath);
       if (!importInfo) {
-        importInfo = { regular: new Set<string>(), typeOnly: new Set<string>() }
-        importStatements.set(importPath, importInfo)
+        importInfo = {
+          regular: new Set<string>(),
+          typeOnly: new Set<string>(),
+        };
+        importStatements.set(importPath, importInfo);
       }
       // Providers (functions and classes) are regular imports
-      importInfo.regular.add(providerTypeName)
+      importInfo.regular.add(providerTypeName);
 
       // Construct the call to the provider function or class construction, including passing the required parameters.
       const params: string[] = provider.inputTypes().map((type) => {
-        const paramType = typeName(type)
+        const paramType = typeName(type);
         if (!typeToVariableNameMap.has(paramType)) {
-          throw new Error(`No provider found for type ${paramType}`)
+          throw new Error(`No provider found for type ${paramType}`);
         }
-        return typeToVariableNameMap.get(paramType)!
-      })
+        return typeToVariableNameMap.get(paramType)!;
+      });
 
       if (provider instanceof FunctionProvider) {
         const call = provider.isAsync
           ? `  const ${uniqueName} = await ${providerTypeName}(${params.join(
               ", ",
             )});`
-          : `  const ${uniqueName} = ${providerTypeName}(${params.join(", ")});`
-        providerCalls.push(call)
+          : `  const ${uniqueName} = ${providerTypeName}(${params.join(", ")});`;
+        providerCalls.push(call);
       } else if (provider instanceof ClassProvider) {
         providerCalls.push(
           `  const ${uniqueName} = new ${providerTypeName}(${params.join(
             ", ",
           )});`,
-        )
+        );
       }
     }
 
-    const targetTypeName = init.returnType.getSymbol()?.getName() || ""
-    const returnVariableName = typeToVariableNameMap.get(targetTypeName) || ""
+    const targetTypeName = init.returnType.getSymbol()?.getName() || "";
+    const returnVariableName = typeToVariableNameMap.get(targetTypeName) || "";
     const asyncKeyword = providers.some(
       (provider) => provider instanceof FunctionProvider && provider.isAsync,
     )
       ? "async "
-      : ""
-    
-    // Emit function header with original parameter list
-    const paramsString = init.declaration.parameters.map(p => p.getText()).join(", ")
-    const functionBody = `export ${asyncKeyword}function ${init.name}(${paramsString}) {\n${providerCalls.join("\n")}\n  return ${returnVariableName};\n}`
+      : "";
 
-    return { functionBody }
+    // Emit function header with original parameter list
+    const paramsString = init.declaration.parameters
+      .map((p) => p.getText())
+      .join(", ");
+    const functionBody = `export ${asyncKeyword}function ${init.name}(${paramsString}) {\n${providerCalls.join("\n")}\n  return ${returnVariableName};\n}`;
+
+    return { functionBody };
   }
 }

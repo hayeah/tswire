@@ -1,9 +1,9 @@
 export interface ModuleFoo {
-  foo: string
+  foo: string;
 }
 
 export function provideFoo(): ModuleFoo {
-  return { foo: "foo" }
+  return { foo: "foo" };
 }
 
-export const moduleProviders = [provideFoo]
+export const moduleProviders = [provideFoo];

@@ -1,0 +1,5 @@
+.vscode
+node_modules
+tmp
+**/*_gen.ts
+bun.lockb

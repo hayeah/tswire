@@ -1,23 +1,23 @@
-import { tswire } from ".."
+import { tswire } from "..";
 
 export interface AppConfig {
-  apiUrl: string
-  debug: boolean
+  apiUrl: string;
+  debug: boolean;
 }
 
 interface Repo {
-  config: AppConfig
+  config: AppConfig;
 }
 
 export function provideRepo(config: AppConfig): Repo {
-  return { config }
+  return { config };
 }
 
 export class Controller {
   constructor(public repo: Repo) {}
 }
 
-function initController(cfg: AppConfig): Controller {
-  tswire([provideRepo, Controller])
-  return null as any
+function _initController(_cfg: AppConfig): Controller {
+  tswire([provideRepo, Controller]);
+  return null as any;
 }

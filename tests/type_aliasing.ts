@@ -1,28 +1,31 @@
-import { tswire } from ".."
+import { tswire } from "..";
 
-type Foo = number
+type Foo = number;
 
 interface Bar {
-  foo: Foo
+  foo: Foo;
 }
 
 // type Bar = number
 
-var foo: Foo = 10
+var foo: Foo = 10;
 
 export function provideFoo(): Foo {
-  return foo
+  return foo;
 }
 
 export function provideBar(foo: Foo): Bar {
-  return { foo }
+  return { foo };
 }
 
 export class Class {
-  constructor(public foo: Foo, public bar: Bar) {}
+  constructor(
+    public foo: Foo,
+    public bar: Bar,
+  ) {}
 }
 
-function init(): Class {
-  tswire([Class, provideBar, provideFoo])
-  return null as any
+function _init(): Class {
+  tswire([Class, provideBar, provideFoo]);
+  return null as any;
 }

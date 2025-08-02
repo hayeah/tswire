@@ -1,11 +1,11 @@
-import { tswire } from ".."
+import { tswire } from "..";
 
 interface Foo {
-  foo: string
+  foo: string;
 }
 
 export function provideFoo(): Foo {
-  return { foo: "foo" }
+  return { foo: "foo" };
 }
 
 export class BarClass {
@@ -13,6 +13,6 @@ export class BarClass {
 }
 
 export function init(): BarClass {
-  tswire([provideFoo, BarClass])
-  return null as any
+  tswire([provideFoo, BarClass]);
+  return null as any;
 }

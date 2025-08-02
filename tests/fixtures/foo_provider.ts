@@ -1,5 +1,5 @@
-import { type Foo } from "./types"
+import type { Foo } from "./types";
 
 export function provideFoo(): Foo {
-  return { foo: "foo" }
+  return { foo: "foo" };
 }

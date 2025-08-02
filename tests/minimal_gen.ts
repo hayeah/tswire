@@ -1,6 +1,6 @@
 import { provideFoo } from "./minimal";
 
-export function init() {
+export function _init() {
   const foo = provideFoo();
   return foo;
 }

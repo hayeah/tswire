@@ -1,6 +1,6 @@
 import { provideFoo, provideBar, Class } from "./type_aliasing";
 
-export function init() {
+export function _init() {
   const foo = provideFoo();
   const bar = provideBar(foo);
   const $class = new Class(foo, bar);
