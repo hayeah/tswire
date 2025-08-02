@@ -413,6 +413,22 @@ export class Resolver {
   ) {}
 
   /**
+   * Gets the canonical symbol for a type, throwing an error if not found.
+   * @param type The type to get the symbol for
+   * @returns The canonical symbol
+   * @throws Error if the symbol is not found
+   */
+  public canonicalSymbol(type: ts.Type): ts.Symbol {
+    const symbol = canonicalSymbol(type, this.checker)
+    
+    if (!symbol) {
+      throw new Error(`Type has no symbol: ${typeName(type)}`)
+    }
+    
+    return symbol
+  }
+
+  /**
    * Resolves and collects all provider declarations from a given expression.
    * Recursively processes arrays of providers or individual provider identifiers.
    * @param arg The expression to resolve for provider declarations.
@@ -544,11 +560,7 @@ export class Resolver {
 
     for (const provider of providers) {
       const outputType = provider.outputType()
-      const outputSymbol = canonicalSymbol(outputType, this.checker)
-      
-      if (!outputSymbol) {
-        throw new Error(`Provider output type has no symbol: ${typeName(outputType)}`)
-      }
+      const outputSymbol = this.canonicalSymbol(outputType)
 
       const inputTypes = provider.inputTypes()
 
@@ -559,10 +571,7 @@ export class Resolver {
       }
 
       for (const paramType of inputTypes) {
-        const paramSymbol = canonicalSymbol(paramType, this.checker)
-        if (!paramSymbol) {
-          throw new Error(`Provider input type has no symbol: ${typeName(paramType)}`)
-        }
+        const paramSymbol = this.canonicalSymbol(paramType)
         dependencies.add(paramSymbol)
       }
       
@@ -581,21 +590,13 @@ export class Resolver {
     // type symbol of the provider to the provider.
     for (let provider of providers) {
       const outputType = provider.outputType()
-      const outputSymbol = canonicalSymbol(outputType, this.checker)
-      
-      if (!outputSymbol) {
-        throw new Error(`Provider output type has no symbol: ${typeName(outputType)}`)
-      }
+      const outputSymbol = this.canonicalSymbol(outputType)
 
       providerMap.set(outputSymbol, provider)
     }
 
     const dependencyGraph = this.buildDependencyGraph(providers)
-    const returnSymbol = canonicalSymbol(returnType, this.checker)
-    
-    if (!returnSymbol) {
-      throw new Error(`Return type has no symbol: ${typeName(returnType)}`)
-    }
+    const returnSymbol = this.canonicalSymbol(returnType)
     
     const order = topologicalSort(returnSymbol, dependencyGraph)
 
