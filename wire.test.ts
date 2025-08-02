@@ -1,13 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import * as path from "node:path";
-import {
-  type Initializer,
-  InjectionAnalyzer,
-  type ProviderInterface,
-  relativeImportPath,
-  typeName,
-} from "./wire";
+import { type Initializer } from "./Initializer";
+import { InjectionAnalyzer } from "./InjectionAnalyzer";
+import { type ProviderInterface } from "./types";
+import { relativeImportPath, typeName } from "./utils";
 
 function analyzerForFile(filePath: string): InjectionAnalyzer {
   const providersFilePath = path.join(__dirname, filePath);
