@@ -7,11 +7,6 @@ import type { InjectionAnalyzer } from "./InjectionAnalyzer";
 import type { ProviderInterface } from "./types";
 import { relativeImportPath, typeName } from "./utils";
 
-function analyzerForFile(filePath: string): InjectionAnalyzer {
-  const providersFilePath = path.join(__dirname, filePath);
-  return initAnalyzer({ rootFile: providersFilePath });
-}
-
 test("relativeImportPath", () => {
   const importPath = relativeImportPath(
     "tests/type_aliasing_gen.ts",
@@ -26,17 +21,17 @@ describe("code generation", () => {
 
   // Collect all test files first
   const testFiles: string[] = [];
+  const testFilePaths: string[] = [];
   for (const file of glob.scanSync({ cwd: __dirname })) {
     if (file.endsWith("_gen.ts") || file.startsWith("_")) {
       continue;
     }
     testFiles.push(file);
+    testFilePaths.push(path.join(__dirname, file));
   }
 
-  // Pre-initialize analyzers for all files to warm up the cache
-  for (const file of testFiles) {
-    analyzerForFile(file);
-  }
+  // Create single analyzer for all files
+  const analyzer = initAnalyzer({ rootFiles: testFilePaths });
 
   // Run the actual tests
   for (const file of testFiles) {
@@ -44,8 +39,7 @@ describe("code generation", () => {
       const originalFilePath = path.join(__dirname, file);
       const generatedFilePath = originalFilePath.replace(".ts", "_gen.ts");
 
-      const analyzer = analyzerForFile(file);
-      const generatedCode = analyzer.code(); // Get generated code from the analyzer
+      const generatedCode = analyzer.codeFor(originalFilePath); // Get generated code for specific file
       const expectedCode = fs.readFileSync(generatedFilePath, "utf8"); // Read expected generated code
 
       expect(generatedCode).toEqual(expectedCode);
@@ -57,7 +51,7 @@ class TestContext {
   public analyzer: InjectionAnalyzer;
   constructor(file: string) {
     const rootFile = path.join(__dirname, file);
-    this.analyzer = initAnalyzer({ rootFile });
+    this.analyzer = initAnalyzer({ rootFiles: [rootFile] });
   }
   get initializers(): Initializer[] {
     return this.analyzer.findInitializers();

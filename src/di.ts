@@ -1,5 +1,5 @@
 export interface Config {
-  rootFile: string;
+  rootFiles: string[];
 }
 
 import * as ts from "typescript";
@@ -10,13 +10,18 @@ let cachedProgram: ts.Program | undefined;
 let cachedChecker: WireTypeChecker | undefined;
 
 export function provideProgram(c: Config): ts.Program {
-  if (cachedProgram?.getRootFileNames().includes(c.rootFile)) {
+  const currentRootNames = new Set(cachedProgram?.getRootFileNames() ?? []);
+
+  // Check if all new root names are already in the current program
+  const needsRebuild = c.rootFiles.some((file) => !currentRootNames.has(file));
+
+  if (cachedProgram && !needsRebuild) {
     return cachedProgram;
   }
 
   const rootNames = new Set([
     ...(cachedProgram?.getRootFileNames() ?? []),
-    c.rootFile,
+    ...c.rootFiles,
   ]);
 
   cachedProgram = ts.createProgram({

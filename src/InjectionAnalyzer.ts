@@ -26,11 +26,9 @@ export class InjectionAnalyzer {
     public checker: WireTypeChecker,
   ) {}
 
-  public async writeCode(outputFile?: string) {
-    if (!outputFile) {
-      outputFile = wireOutputPath(this.cfg.rootFile);
-    }
-    await Bun.write(outputFile, this.code());
+  public async writeCode(rootFile: string) {
+    const outputFile = wireOutputPath(rootFile);
+    await Bun.write(outputFile, this.codeFor(rootFile));
   }
 
   public findInitializers(): Initializer[] {
@@ -84,18 +82,25 @@ export class InjectionAnalyzer {
       }
     }
 
-    const sourceFile = this.program.getSourceFile(this.cfg.rootFile);
-    if (!sourceFile) {
-      throw new Error(`source file not found: ${this.cfg.rootFile}`);
+    // Process all root files
+    for (const rootFile of this.cfg.rootFiles) {
+      const sourceFile = this.program.getSourceFile(rootFile);
+      if (!sourceFile) {
+        throw new Error(`source file not found: ${rootFile}`);
+      }
+      ts.forEachChild(sourceFile, visit);
     }
-
-    ts.forEachChild(sourceFile, visit);
 
     return inits;
   }
 
-  public code(): string {
-    const inits = this.findInitializers();
+  public codeFor(rootFile: string): string {
+    const allInits = this.findInitializers();
+    // Filter initializers for the requested file
+    const inits = allInits.filter(
+      (init) => init.declaration.getSourceFile().fileName === rootFile,
+    );
+
     // Track both regular and type-only imports
     const importsMap: Map<
       string,
@@ -105,7 +110,11 @@ export class InjectionAnalyzer {
 
     // Collect all necessary imports and function bodies from initializers
     for (const init of inits) {
-      const { functionBody } = this.generateInitFunction(init, importsMap);
+      const { functionBody } = this.generateInitFunction(
+        init,
+        importsMap,
+        rootFile,
+      );
       functions.push(functionBody);
     }
 
@@ -129,12 +138,20 @@ export class InjectionAnalyzer {
     return `${imports}\n\n${functions.join("\n\n")}`;
   }
 
+  public code(): string {
+    // Convenience method that joins code for all root files
+    return this.cfg.rootFiles
+      .map((rootFile) => this.codeFor(rootFile))
+      .join("\n\n");
+  }
+
   private generateInitFunction(
     init: Initializer,
     importStatements: Map<
       string,
       { regular: Set<string>; typeOnly: Set<string> }
     >,
+    rootFile: string,
   ): {
     functionBody: string;
   } {
@@ -171,7 +188,7 @@ export class InjectionAnalyzer {
 
           if (isExported) {
             const importPath = relativeImportPath(
-              this.cfg.rootFile,
+              rootFile,
               sourceFile.fileName,
             );
             let importInfo = importStatements.get(importPath);
@@ -210,10 +227,7 @@ export class InjectionAnalyzer {
 
       const providerTypeName = provider.exportName();
       const declarationFileName = findSourceFile(provider.node()).fileName;
-      const importPath = relativeImportPath(
-        this.cfg.rootFile,
-        declarationFileName,
-      );
+      const importPath = relativeImportPath(rootFile, declarationFileName);
       let importInfo = importStatements.get(importPath);
       if (!importInfo) {
         importInfo = {
