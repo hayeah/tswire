@@ -164,6 +164,23 @@ export function isAliasType(type: ts.Type): type is AliasType {
   return "tswireTypeAliasSymbol" in type
 }
 
+export class InitArgProvider implements ProviderInterface {
+  constructor(
+    private param: ts.ParameterDeclaration,
+    private checker: WireTypeChecker
+  ) {}
+
+  node(): ts.Node { return this.param }
+
+  exportName(): string { return this.param.name.getText() }
+
+  inputTypes(): ts.Type[] { return [] }
+
+  outputType(): ts.Type {
+    return this.checker.getTypeAtLocationWithAliasSymbol(this.param.type!)
+  }
+}
+
 export class FunctionProvider implements ProviderInterface {
   constructor(
     protected declaration: ts.FunctionDeclaration,
@@ -586,8 +603,17 @@ export class Initializer {
     return this.checker.getTypeAtLocationWithAliasSymbol(this.declaration.type!)
   }
 
+  private initArgProviders(): ProviderInterface[] {
+    return this.declaration.parameters.map(
+      p => new InitArgProvider(p, this.checker)
+    )
+  }
+
   public providers(): ProviderInterface[] {
-    return this.resolver.collectProviders(this.providersEntry)
+    return [
+      ...this.resolver.collectProviders(this.providersEntry),
+      ...this.initArgProviders()
+    ]
   }
 
   public linearizedProviders(): ProviderInterface[] {
@@ -696,8 +722,8 @@ export class InjectionAnalyzer {
 
   public code(): string {
     const inits = this.findInitializers()
-    // Adjust imports to consolidate by file
-    const importsMap: Map<string, Set<string>> = new Map() // Map from file paths to sets of imported providers
+    // Track both regular and type-only imports
+    const importsMap: Map<string, { regular: Set<string>, typeOnly: Set<string> }> = new Map()
     const functions: string[] = []
 
     // Collect all necessary imports and function bodies from initializers
@@ -707,11 +733,16 @@ export class InjectionAnalyzer {
     }
 
     // Generate the combined import statements
-    const imports = Array.from(
-      importsMap,
-      ([path, names]) =>
-        `import { ${Array.from(names).join(", ")} } from "${path}";`,
-    ).join("\n")
+    const importStatements: string[] = []
+    for (const [path, { regular, typeOnly }] of importsMap) {
+      if (regular.size > 0) {
+        importStatements.push(`import { ${Array.from(regular).join(", ")} } from "${path}";`)
+      }
+      if (typeOnly.size > 0) {
+        importStatements.push(`import type { ${Array.from(typeOnly).join(", ")} } from "${path}";`)
+      }
+    }
+    const imports = importStatements.join("\n")
 
     // Combine all parts into one output
     return `${imports}\n\n${functions.join("\n\n")}`
@@ -719,7 +750,7 @@ export class InjectionAnalyzer {
 
   private generateInitFunction(
     init: Initializer,
-    importStatements: Map<string, Set<string>>,
+    importStatements: Map<string, { regular: Set<string>, typeOnly: Set<string> }>,
   ): {
     functionBody: string
   } {
@@ -728,9 +759,49 @@ export class InjectionAnalyzer {
     const providerCalls = []
     const usedNames = new Set<string>() // Tracks used names to avoid collisions
 
+    // Before iterating over providers, handle init parameters
+    for (const param of init.declaration.parameters) {
+      const paramName = param.name.getText()
+      const paramType = this.checker.getTypeAtLocationWithAliasSymbol(param.type!)
+      const paramTypeName = typeName(paramType)
+      typeToVariableNameMap.set(paramTypeName, paramName)
+      usedNames.add(paramName)
+      
+      // Check if we need to import the parameter type
+      const typeSymbol = paramType.getSymbol()
+      if (typeSymbol && typeSymbol.declarations && typeSymbol.declarations.length > 0) {
+        const declaration = typeSymbol.declarations[0]
+        const sourceFile = declaration.getSourceFile()
+        
+        // Only import if it's from the same file and is exported
+        if (sourceFile.fileName === init.declaration.getSourceFile().fileName) {
+          const isExported = declaration.modifiers?.some(
+            (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
+          )
+          
+          if (isExported) {
+            const importPath = relativeImportPath(this.rootFile, sourceFile.fileName)
+            let importInfo = importStatements.get(importPath)
+            if (!importInfo) {
+              importInfo = { regular: new Set<string>(), typeOnly: new Set<string>() }
+              importStatements.set(importPath, importInfo)
+            }
+            // Parameter types should be imported as type-only
+            importInfo.typeOnly.add(paramTypeName)
+          }
+        }
+      }
+    }
+
     for (let provider of providers) {
       const outputType = provider.outputType()
       const outputTypeName = typeName(outputType)
+      
+      // Skip processing for InitArgProvider since variable names are already set from parameters
+      if (provider instanceof InitArgProvider) {
+        continue
+      }
+
       const baseName = variableNameForType(outputType)
       let uniqueName = baseName
       let counter = 1
@@ -744,12 +815,13 @@ export class InjectionAnalyzer {
       const providerTypeName = provider.exportName()
       const declarationFileName = findSourceFile(provider.node()).fileName
       const importPath = relativeImportPath(this.rootFile, declarationFileName)
-      let importNames = importStatements.get(importPath)
-      if (!importNames) {
-        importNames = new Set<string>()
-        importStatements.set(importPath, importNames)
+      let importInfo = importStatements.get(importPath)
+      if (!importInfo) {
+        importInfo = { regular: new Set<string>(), typeOnly: new Set<string>() }
+        importStatements.set(importPath, importInfo)
       }
-      importNames.add(providerTypeName)
+      // Providers (functions and classes) are regular imports
+      importInfo.regular.add(providerTypeName)
 
       // Construct the call to the provider function or class construction, including passing the required parameters.
       const params: string[] = provider.inputTypes().map((type) => {
@@ -783,9 +855,10 @@ export class InjectionAnalyzer {
     )
       ? "async "
       : ""
-    const functionBody = `export ${asyncKeyword}function ${
-      init.name
-    }() {\n${providerCalls.join("\n")}\n  return ${returnVariableName};\n}`
+    
+    // Emit function header with original parameter list
+    const paramsString = init.declaration.parameters.map(p => p.getText()).join(", ")
+    const functionBody = `export ${asyncKeyword}function ${init.name}(${paramsString}) {\n${providerCalls.join("\n")}\n  return ${returnVariableName};\n}`
 
     return { functionBody }
   }
