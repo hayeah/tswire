@@ -1,47 +1,23 @@
-import { tswire } from ".";
-
-interface Foo {
-  foo: string;
+export interface Config {
+  rootFile: string;
 }
 
-interface Bar {
-  bar: string;
+import * as ts from "typescript";
+import type { WireTypeChecker } from "./types";
+import { monkeyPatchTypeChecker } from "./utils";
 
-  foo: Foo;
+export function provideProgram(c: Config): ts.Program {
+  return ts.createProgram([c.rootFile], { allowJs: true });
 }
 
-interface Baz {
-  foo: Foo;
-  bar: Bar;
+export function provideWireTypeChecker(p: ts.Program): WireTypeChecker {
+  return monkeyPatchTypeChecker(p.getTypeChecker());
 }
 
-export function provideFoo(): Foo {
-  return { foo: "foo" };
-}
+import { InjectionAnalyzer } from "./InjectionAnalyzer";
+import { tswire } from "./index";
 
-export function provideBar(foo: Foo): Bar {
-  return { bar: "bar", foo };
-}
-
-export function provideBaz(foo: Foo, bar: Bar): Baz {
-  return { foo, bar };
-}
-
-// export const providers = [provideFoo, provideBar, provideBaz]
-
-// The function's first statement uses the special `tswire` function to mark the
-// function for dependency injection. The argument to the `tswire` function are
-// the providers that are used to resolve the dependencies.
-function _init(): Baz {
-  tswire([provideFoo, provideBar, provideBaz]);
+export function initAnalyzer(cfg: Config): InjectionAnalyzer {
+  tswire([provideProgram, provideWireTypeChecker, InjectionAnalyzer]);
   return null as any;
 }
-
-// Then we want to sort the depencnies in the order, then construct the init
-// function:
-
-// function init(): Bar {
-//   const foo = provideFoo();
-//   const bar = provideBar(foo);
-//   return bar;
-// }

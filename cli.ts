@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { program } from "commander";
-import { InjectionAnalyzer } from "./wire.ts";
+import { initAnalyzer } from "./di_gen";
 
 program
   .arguments("<files...>") // This allows for multiple file arguments
@@ -10,7 +10,7 @@ program
     for (const file of files) {
       try {
         console.log(`tswire ${file}`);
-        const analyzer = new InjectionAnalyzer(file);
+        const analyzer = initAnalyzer({ rootFile: file });
         analyzer.writeCode();
       } catch (error) {
         console.error(`Error processing ${file}: ${error}`);

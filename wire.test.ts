@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import * as path from "node:path";
-import { type Initializer } from "./Initializer";
-import { InjectionAnalyzer } from "./InjectionAnalyzer";
-import { type ProviderInterface } from "./types";
+import { initAnalyzer } from "./di_gen";
+import type { Initializer } from "./Initializer";
+import type { InjectionAnalyzer } from "./InjectionAnalyzer";
+import type { ProviderInterface } from "./types";
 import { relativeImportPath, typeName } from "./utils";
 
 function analyzerForFile(filePath: string): InjectionAnalyzer {
   const providersFilePath = path.join(__dirname, filePath);
-  return new InjectionAnalyzer(providersFilePath);
+  return initAnalyzer({ rootFile: providersFilePath });
 }
 
 test("relativeImportPath", () => {
@@ -44,7 +45,7 @@ class TestContext {
   public analyzer: InjectionAnalyzer;
   constructor(file: string) {
     const rootFile = path.join(__dirname, file);
-    this.analyzer = new InjectionAnalyzer(rootFile);
+    this.analyzer = initAnalyzer({ rootFile });
   }
   get initializers(): Initializer[] {
     return this.analyzer.findInitializers();

@@ -1,13 +1,13 @@
 import * as ts from "typescript";
 import { ClassProvider } from "./ClassProvider";
 import { keywords } from "./constants";
+import type { Config } from "./di";
 import { FunctionProvider } from "./FunctionProvider";
 import { InitArgProvider } from "./InitArgProvider";
 import { Initializer } from "./Initializer";
 import type { WireTypeChecker } from "./types";
 import {
   findSourceFile,
-  monkeyPatchTypeChecker,
   relativeImportPath,
   typeName,
   wireOutputPath,
@@ -20,17 +20,15 @@ const nonInjectableReturnTypes =
   ts.TypeFlags.Never;
 
 export class InjectionAnalyzer {
-  public program: ts.Program;
-  public checker: WireTypeChecker;
-
-  constructor(public rootFile: string) {
-    this.program = ts.createProgram([rootFile], { allowJs: true });
-    this.checker = monkeyPatchTypeChecker(this.program.getTypeChecker());
-  }
+  constructor(
+    public cfg: Config,
+    public program: ts.Program,
+    public checker: WireTypeChecker,
+  ) {}
 
   public async writeCode(outputFile?: string) {
     if (!outputFile) {
-      outputFile = wireOutputPath(this.rootFile);
+      outputFile = wireOutputPath(this.cfg.rootFile);
     }
     await Bun.write(outputFile, this.code());
   }
@@ -86,9 +84,9 @@ export class InjectionAnalyzer {
       }
     }
 
-    const sourceFile = this.program.getSourceFile(this.rootFile);
+    const sourceFile = this.program.getSourceFile(this.cfg.rootFile);
     if (!sourceFile) {
-      throw new Error(`source file not found: ${this.rootFile}`);
+      throw new Error(`source file not found: ${this.cfg.rootFile}`);
     }
 
     ts.forEachChild(sourceFile, visit);
@@ -173,7 +171,7 @@ export class InjectionAnalyzer {
 
           if (isExported) {
             const importPath = relativeImportPath(
-              this.rootFile,
+              this.cfg.rootFile,
               sourceFile.fileName,
             );
             let importInfo = importStatements.get(importPath);
@@ -212,7 +210,10 @@ export class InjectionAnalyzer {
 
       const providerTypeName = provider.exportName();
       const declarationFileName = findSourceFile(provider.node()).fileName;
-      const importPath = relativeImportPath(this.rootFile, declarationFileName);
+      const importPath = relativeImportPath(
+        this.cfg.rootFile,
+        declarationFileName,
+      );
       let importInfo = importStatements.get(importPath);
       if (!importInfo) {
         importInfo = {
