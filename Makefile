@@ -1,5 +1,5 @@
 # Set the source directory and target directory
-SRC_DIR := tests
+SRC_DIR := src/tests
 TARGET_DIR := $(SRC_DIR)
 
 # Find all .ts files in the source directory
@@ -14,13 +14,13 @@ GEN_FILES := $(SRC_FILES:%.ts=%_gen.ts)
 # Default target
 all: $(GEN_FILES)
 
-# Pattern rule for generating `tests/*_gen.ts` codegen fixtures
+# Pattern rule for generating `src/tests/*_gen.ts` codegen fixtures
 $(TARGET_DIR)/%_gen.ts: $(TARGET_DIR)/%.ts
-	bun cli.ts $<
+	bun src/cli.ts $<
 
 # Or, one-liner to do the same thing
 fixtures:
-	find tests -maxdepth 1 -name "*.ts" ! -name "*_gen.ts" | xargs bun cli.ts
+	find src/tests -maxdepth 1 -name "*.ts" ! -name "*_gen.ts" | xargs bun src/cli.ts
 
 # Clean task
 clean:
