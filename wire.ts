@@ -298,7 +298,7 @@ export class FunctionProvider implements ProviderInterface {
 // the graph will have an entry with `A` as the key, and a set containing `B` and `C`.
 // This graph is used to determine the order in which provider functions should be called to satisfy dependencies,
 // ensuring that all inputs for a given provider are available before it is invoked.
-type DependencyGraph = Map<ts.Type, Set<ts.Type>>
+type DependencyGraph = Map<ts.Symbol, Set<ts.Symbol>>
 
 interface WireTypeChecker extends ts.TypeChecker {
   getTypeAtLocationWithAliasSymbol(node: ts.Node): ts.Type
@@ -390,6 +390,20 @@ export function typeName(type: ts.Type): string {
   }
 
   return ""
+}
+
+function canonicalSymbol(
+  type: ts.Type,
+  checker: ts.TypeChecker,
+): ts.Symbol | undefined {
+  let sym = isAliasType(type) ? type.tswireTypeAliasSymbol : type.symbol
+  if (!sym) return sym
+
+  // Collapse import-aliases to their original declaration
+  if (sym.flags & ts.SymbolFlags.Alias) {
+    sym = checker.getAliasedSymbol(sym)
+  }
+  return sym
 }
 
 export class Resolver {
@@ -522,23 +536,36 @@ export class Resolver {
    * This graph maps the return types of provider functions to a set of types they depend on.
    * @returns The DependencyGraph mapping provider return types to their dependencies.
    */
-  public buildDependencyGraph(): DependencyGraph {
+  public buildDependencyGraph(providers?: ProviderInterface[]): DependencyGraph {
     const dependencyGraph: DependencyGraph = new Map()
-    const providers = this.collectProviders(this.entry)
+    if (!providers) {
+      providers = this.collectProviders(this.entry)
+    }
 
     for (const provider of providers) {
       const outputType = provider.outputType()
+      const outputSymbol = canonicalSymbol(outputType, this.checker)
+      
+      if (!outputSymbol) {
+        throw new Error(`Provider output type has no symbol: ${typeName(outputType)}`)
+      }
+
       const inputTypes = provider.inputTypes()
 
-      let dependencies = dependencyGraph.get(outputType)
+      let dependencies = dependencyGraph.get(outputSymbol)
       if (!dependencies) {
-        dependencies = new Set<ts.Type>()
-        dependencyGraph.set(outputType, dependencies)
+        dependencies = new Set<ts.Symbol>()
+        dependencyGraph.set(outputSymbol, dependencies)
       }
 
       for (const paramType of inputTypes) {
-        dependencies.add(paramType)
+        const paramSymbol = canonicalSymbol(paramType, this.checker)
+        if (!paramSymbol) {
+          throw new Error(`Provider input type has no symbol: ${typeName(paramType)}`)
+        }
+        dependencies.add(paramSymbol)
       }
+      
     }
 
     return dependencyGraph
@@ -548,32 +575,45 @@ export class Resolver {
     providers: ProviderInterface[],
     returnType: ts.Type,
   ): ProviderInterface[] {
-    const providerMap: Map<ts.Type, ProviderInterface> = new Map()
+    const providerMap = new Map<ts.Symbol, ProviderInterface>()
 
     // populate providerMap with providers. This is just a map from the return
-    // type of the provider to the provider.
+    // type symbol of the provider to the provider.
     for (let provider of providers) {
-      const returnType = provider.outputType()
+      const outputType = provider.outputType()
+      const outputSymbol = canonicalSymbol(outputType, this.checker)
+      
+      if (!outputSymbol) {
+        throw new Error(`Provider output type has no symbol: ${typeName(outputType)}`)
+      }
 
-      providerMap.set(returnType, provider)
+      providerMap.set(outputSymbol, provider)
     }
 
-    const dependencyGraph = this.buildDependencyGraph()
-    const deps = topologicalSort(returnType, dependencyGraph)
+    const dependencyGraph = this.buildDependencyGraph(providers)
+    const returnSymbol = canonicalSymbol(returnType, this.checker)
+    
+    if (!returnSymbol) {
+      throw new Error(`Return type has no symbol: ${typeName(returnType)}`)
+    }
+    
+    const order = topologicalSort(returnSymbol, dependencyGraph)
 
-    const linearizedProviders = deps.map((dep) => {
-      const provider = providerMap.get(dep)
-
-      const symbol = dep.symbol
-      if ("intrinsicName" in dep && !("tswireTypeAliasSymbol" in dep)) {
-        throw new Error(`intrinsic types not supported: ${dep.intrinsicName}`)
+    const linearizedProviders: ProviderInterface[] = []
+    const seen = new Set<ts.Symbol>()
+    
+    for (const sym of order) {
+      if (seen.has(sym)) {
+        continue
       }
-
+      seen.add(sym)
+      
+      const provider = providerMap.get(sym)
       if (!provider) {
-        throw new Error(`cannot find provider: ${dep.symbol.getName()}`)
+        throw new Error(`cannot find provider: ${sym.getName()}`)
       }
-      return provider
-    })
+      linearizedProviders.push(provider)
+    }
 
     return linearizedProviders
   }
@@ -775,8 +815,8 @@ export class InjectionAnalyzer {
         
         // Only import if it's from the same file and is exported
         if (sourceFile.fileName === init.declaration.getSourceFile().fileName) {
-          const isExported = declaration.modifiers?.some(
-            (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
+          const isExported = (declaration as any).modifiers?.some(
+            (modifier: ts.Modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
           )
           
           if (isExported) {
