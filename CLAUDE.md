@@ -90,8 +90,6 @@ For isomorphic JS code that need to work both in the browser and node/bun, we'd 
 
 - If you worked on typescript, run `tsc` to type check and fix errors.
   - run in package root
-- `pnpm -w run check` to do automatic lint fixing, format.
-  - run in repo root
 
 # Commit Message
 

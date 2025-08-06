@@ -1,11 +1,11 @@
 {
   "name": "tswire",
   "version": "0.0.2",
-  "module": "index.ts",
-  "main": "index.ts",
+  "module": "src/index.ts",
+  "main": "src/index.ts",
   "type": "module",
   "bin": {
-    "tswire": "cli.ts"
+    "tswire": "src/cli.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.1.3",
